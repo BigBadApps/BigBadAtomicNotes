@@ -71,7 +71,7 @@ export default function App() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem("zettel_selected_model") || "gemini-3.5-flash";
+    return localStorage.getItem("atomic_notes_selected_model") || "gemini-3.5-flash";
   });
   const [vaultName, setVaultName] = useState(() => {
     return localStorage.getItem("obsidian_vault_name") || "PersonalVault";
@@ -99,7 +99,7 @@ export default function App() {
   // Local File System / Editing states
   const [localDirectoryHandle, setLocalDirectoryHandle] = useState<any | null>(null);
   const [localFolderName, setLocalFolderName] = useState<string>(() => {
-    return localStorage.getItem("zettel_local_folder_name") || "";
+    return localStorage.getItem("atomic_notes_local_folder_name") || "";
   });
   const [folderErrorMsg, setFolderErrorMsg] = useState<string | null>(null);
   const [editableNotes, setEditableNotes] = useState<ParsedNote[]>([]);
@@ -124,7 +124,7 @@ export default function App() {
       });
       setLocalDirectoryHandle(handle);
       setLocalFolderName(handle.name);
-      localStorage.setItem("zettel_local_folder_name", handle.name);
+      localStorage.setItem("atomic_notes_local_folder_name", handle.name);
     } catch (err: any) {
       console.error("Directory picker error:", err);
       if (err.name === 'SecurityError') {
@@ -231,7 +231,7 @@ export default function App() {
 
       setHistory(prev => {
         const updated = [newHistoryItem, ...prev.slice(0, 19)];
-        localStorage.setItem("zettel_history", JSON.stringify(updated));
+        localStorage.setItem("atomic_notes_history", JSON.stringify(updated));
         return updated;
       });
 
@@ -251,7 +251,7 @@ export default function App() {
 
   // Load history on mount
   useEffect(() => {
-    const savedHistory = localStorage.getItem("zettel_history");
+    const savedHistory = localStorage.getItem("atomic_notes_history");
     if (savedHistory) {
       try {
         setHistory(JSON.parse(savedHistory));
@@ -268,7 +268,7 @@ export default function App() {
 
   // Save selected model to localStorage when it changes
   useEffect(() => {
-    localStorage.setItem("zettel_selected_model", selectedModel);
+    localStorage.setItem("atomic_notes_selected_model", selectedModel);
   }, [selectedModel]);
 
   // Trigger automatic URL mode toggle if pasting a URL in the textbox
@@ -326,7 +326,7 @@ export default function App() {
         throw new Error(data.error || "Generation request failed");
       }
 
-      setLoadingStep("Parsing atomic Zettelkasten notes...");
+      setLoadingStep("Parsing BigBadAtomicNotes...");
 
       const generatedMarkdown = data.markdown;
       const notes = parseMarkdownNotes(generatedMarkdown);
@@ -365,7 +365,7 @@ export default function App() {
 
       const updatedHistory = [newHistoryItem, ...history.slice(0, 19)]; // Limit to 20 items
       setHistory(updatedHistory);
-      localStorage.setItem("zettel_history", JSON.stringify(updatedHistory));
+      localStorage.setItem("atomic_notes_history", JSON.stringify(updatedHistory));
 
       setActiveTab("cards");
     } catch (err: any) {
@@ -398,13 +398,13 @@ export default function App() {
     e.stopPropagation();
     const updated = history.filter(item => item.id !== id);
     setHistory(updated);
-    localStorage.setItem("zettel_history", JSON.stringify(updated));
+    localStorage.setItem("atomic_notes_history", JSON.stringify(updated));
   };
 
   const clearAllHistory = () => {
     if (window.confirm("Are you sure you want to clear your local synthesis history?")) {
       setHistory([]);
-      localStorage.removeItem("zettel_history");
+      localStorage.removeItem("atomic_notes_history");
     }
   };
 
@@ -471,7 +471,7 @@ export default function App() {
               const targetNote: ParsedNote = {
                 title: linkLabel,
                 fileName: `${linkLabel}.md`,
-                content: `---\ntags: [placeholder]\nsource: Referencing Zettelkasten\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkLabel}\n\nThis note is created as a placeholder link from [[${currentTitle || "Synthesis"}]]`,
+                content: `---\ntags: [placeholder]\nsource: Referencing BigBadAtomicNotes\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkLabel}\n\nThis note is created as a placeholder link from [[${currentTitle || "Synthesis"}]]`,
                 frontmatter: { aliases: "", tags: "placeholder", source: currentTitle, date: new Date().toISOString().split("T")[0] }
               };
               window.open(getObsidianUri(targetNote));
@@ -560,7 +560,7 @@ export default function App() {
                 const tNote: ParsedNote = {
                   title: linkStr,
                   fileName: `${linkStr}.md`,
-                  content: `---\ntags: [placeholder]\nsource: Referencing Zettelkasten\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkStr}\n\nPlaceholder generated for relation from [[${currentNoteTitle}]]`,
+                  content: `---\ntags: [placeholder]\nsource: Referencing BigBadAtomicNotes\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkStr}\n\nPlaceholder generated for relation from [[${currentNoteTitle}]]`,
                   frontmatter: { aliases: "", tags: "placeholder", source: currentNoteTitle, date: new Date().toISOString().split("T")[0] }
                 };
                 window.open(getObsidianUri(tNote));
@@ -654,10 +654,10 @@ export default function App() {
   );
 
   return (
-    <div id="zettel-root" className="flex flex-col h-screen w-full bg-[#0d0e12] text-gray-200 font-sans overflow-hidden">
+    <div id="atomic-notes-root" className="flex flex-col h-screen w-full bg-[#0d0e12] text-gray-200 font-sans overflow-hidden">
       
       {/* Navigation bar with mobile hamburger & tabs */}
-      <nav id="zettel-nav" className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10 bg-[#12141a] z-30">
+      <nav id="atomic-notes-nav" className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10 bg-[#12141a] z-30">
         <div className="flex items-center gap-2.5 md:gap-3">
           {/* Mobile Hamburg menu button */}
           <button 
@@ -673,7 +673,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-sm md:text-lg font-semibold tracking-tight text-white flex items-center gap-2">
-              Zettel-Agent
+              BigBadAtomicNotes
               <span className="text-xs font-normal text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full uppercase tracking-widest hidden sm:inline-block">
                 v1.1
               </span>
@@ -712,7 +712,7 @@ export default function App() {
         <div className="hidden md:flex items-center gap-4">
           <div className="flex items-center gap-2 px-3 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full">
             <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
-            <span className="text-xs font-medium text-indigo-300">Zettelkasten Mode</span>
+            <span className="text-xs font-medium text-indigo-300">BigBadAtomicNotes Mode</span>
           </div>
           
           <div className="flex items-center gap-2">
@@ -750,7 +750,7 @@ export default function App() {
                   onClick={() => {
                     setLocalDirectoryHandle(null);
                     setLocalFolderName("");
-                    localStorage.removeItem("zettel_local_folder_name");
+                    localStorage.removeItem("atomic_notes_local_folder_name");
                   }}
                   className="text-gray-500 hover:text-red-400 focus:outline-none ml-1 bg-transparent border-none p-0 cursor-pointer"
                   title="Clear selected folder"
@@ -764,10 +764,10 @@ export default function App() {
       </nav>
 
       {/* Main Framework body */}
-      <div id="zettel-container" className="flex flex-1 overflow-hidden relative">
+      <div id="atomic-notes-container" className="flex flex-1 overflow-hidden relative">
         
         {/* Permanent Sidebar (Desktop view only) */}
-        <aside id="zettel-sidebar" className="hidden md:flex w-72 bg-[#12141a] border-r border-white/10 p-5 flex-col justify-between shrink-0">
+        <aside id="atomic-notes-sidebar" className="hidden md:flex w-72 bg-[#12141a] border-r border-white/10 p-5 flex-col justify-between shrink-0">
           {renderHistoryContent()}
           
           {/* Quick Informational Bottom Section */}
@@ -836,7 +836,7 @@ export default function App() {
                         onClick={() => {
                           setLocalDirectoryHandle(null);
                           setLocalFolderName("");
-                          localStorage.removeItem("zettel_local_folder_name");
+                          localStorage.removeItem("atomic_notes_local_folder_name");
                         }}
                         className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 p-1.5 rounded transition-colors cursor-pointer"
                         title="Clear Folder Selection"
@@ -852,7 +852,7 @@ export default function App() {
                     onChange={(e) => {
                       const val = e.target.value;
                       setLocalFolderName(val);
-                      localStorage.setItem("zettel_local_folder_name", val);
+                      localStorage.setItem("atomic_notes_local_folder_name", val);
                       if (localDirectoryHandle && val !== localDirectoryHandle.name) {
                         setLocalDirectoryHandle(null);
                       }
@@ -932,7 +932,7 @@ export default function App() {
                         type="url" 
                         value={sourceUrl}
                         onChange={(e) => setSourceUrl(e.target.value)}
-                        placeholder="https://medium.com/pkm/zettelkasten-guide..." 
+                        placeholder="https://medium.com/pkm/atomic-notes-guide..." 
                         className="w-full bg-[#0d0e12] border border-white/10 rounded-lg p-3 pl-10 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-gray-600 font-sans min-h-[44px]"
                       />
                       <span className="absolute left-3.5 top-3.5 text-gray-600">
@@ -1436,7 +1436,7 @@ export default function App() {
                                                 const tNote: ParsedNote = {
                                                   title: linkStr,
                                                   fileName: `${linkStr}.md`,
-                                                  content: `---\ntags: [placeholder]\nsource: Referencing Zettelkasten\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkStr}\n\nPlaceholder generated for relation from [[${note.title}]]`,
+                                                  content: `---\ntags: [placeholder]\nsource: Referencing BigBadAtomicNotes\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkStr}\n\nPlaceholder generated for relation from [[${note.title}]]`,
                                                   frontmatter: { aliases: "", tags: "placeholder", source: note.title, date: new Date().toISOString().split("T")[0] }
                                                 };
                                                 window.open(getObsidianUri(tNote));
@@ -1503,7 +1503,7 @@ export default function App() {
                             Method 3: Obsidian Web Clipper Compatibility
                           </h4>
                           <p className="text-gray-400">
-                            Navigate to the <strong>"Raw"</strong> tab. The Obsidian Web Clipper extension can automatically scrape this formatted page, or you can click <strong>"Copy All"</strong> to save the entire Zettelkasten markdown structure to your clipboard.
+                            Navigate to the <strong>"Raw"</strong> tab. The Obsidian Web Clipper extension can automatically scrape this formatted page, or you can click <strong>"Copy All"</strong> to save the entire BigBadAtomicNotes markdown structure to your clipboard.
                           </p>
                         </div>
                       </div>
@@ -1519,7 +1519,7 @@ export default function App() {
       </div>
 
       {/* Bottom informational footer bar */}
-      <footer id="zettel-footer" className="py-2.5 px-4 md:px-6 bg-[#0d0e12] border-t border-white/5 flex flex-col sm:flex-row items-center justify-between text-[9px] md:text-[10px] text-gray-500 gap-1.5 shrink-0 z-30">
+      <footer id="atomic-notes-footer" className="py-2.5 px-4 md:px-6 bg-[#0d0e12] border-t border-white/5 flex flex-col sm:flex-row items-center justify-between text-[9px] md:text-[10px] text-gray-500 gap-1.5 shrink-0 z-30">
         <div className="flex gap-4 uppercase tracking-widest font-semibold font-mono">
           <span>Model: Gemini 3.5 Flash</span>
           <span>Context: 1M Tokens</span>

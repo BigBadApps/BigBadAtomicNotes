@@ -1,1 +1,1 @@
-{"name":"Obsidian Zettelkasten Generator","description":"Generate atomic, Wikilink-connected Zettelkasten notes from URLs or text for easy copy-pasting or clipping into Obsidian.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
+{"name":"BigBadAtomicNotes","description":"Generate atomic, Wikilink-connected notes from URLs or text for easy copy-pasting or clipping into Obsidian.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}

@@ -71,7 +71,7 @@ async function startServer() {
       }
 
       // Construct system prompt and user prompt
-      const systemInstruction = `You are an expert knowledge manager and Zettelkasten practitioner. Your primary goal is to analyze provided articles, texts, or URLs and distill their core ideas into a series of highly dense, single-concept "atomic notes" formatted specifically for an Obsidian vault. 
+      const systemInstruction = `You are an expert knowledge manager and BigBadAtomicNotes practitioner. Your primary goal is to analyze provided articles, texts, or URLs and distill their core ideas into a series of highly dense, single-concept "atomic notes" formatted specifically for an Obsidian vault. 
 
 Objective:
 Do not simply summarize the article. Instead, deconstruct it into standalone, reusable building blocks of knowledge. Format the output as distinct Markdown code blocks so they can be easily copied and pasted into separate Obsidian .md files.

@@ -1,4 +1,4 @@
-# Obsidian Zettelkasten Generator
+# BigBadAtomicNotes
 
 A modern, full-stack, AI-powered tool designed to transform long-form text, articles, research papers, or web URLs into highly cohesive, atomic, and Wikilink-connected Markdown notes (`.md`). The output is perfectly optimized for modern non-linear note-taking applications like **Obsidian**, **Logseq**, or **Roam Research**.
 
@@ -6,7 +6,7 @@ A modern, full-stack, AI-powered tool designed to transform long-form text, arti
 
 ## 🎨 Visual Preview & Concept
 
-The Obsidian Zettelkasten Generator automates the process of dissecting dense informational sources into single-topic, highly connected "Zettels" (cards). It constructs a semantic web of knowledge by automatically creating internal link-references (`[[WikiLinks]]`) between synthesized topics.
+BigBadAtomicNotes automates the process of dissecting dense informational sources into single-topic, highly connected atomic notes. It constructs a semantic web of knowledge by automatically creating internal link-references (`[[WikiLinks]]`) between synthesized topics.
 
 ---
 
@@ -18,7 +18,7 @@ The Obsidian Zettelkasten Generator automates the process of dissecting dense in
 
 ### 2. Intelligent Atomic Synthesis (AI-Powered)
 *   Powered by server-side **Gemini API** integration.
-*   Dissects complex, unstructured materials into discrete, single-concept notes following classic Zettelkasten principles (Principle of Atomicity).
+*   Dissects complex, unstructured materials into discrete, single-concept notes following classic principles of atomicity (Principle of Atomicity).
 
 ### 3. Automatic Wikilink Connection Grid
 *   The AI evaluates semantic relationships among the synthesized notes.
