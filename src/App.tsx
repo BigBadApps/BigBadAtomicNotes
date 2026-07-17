@@ -55,6 +55,13 @@ const MODELS = [
     badge: "Fastest",
     desc: "Low-latency atomic splits",
     isPaid: false
+  },
+  {
+    id: "byok",
+    name: "Custom OpenAI Provider (BYOK)",
+    badge: "BYOK",
+    desc: "Use your own custom OpenAI-compatible API",
+    isPaid: false
   }
 ];
 
@@ -77,7 +84,23 @@ export default function App() {
     return localStorage.getItem("obsidian_vault_name") || "PersonalVault";
   });
 
+  // BYOK Settings States
+  const [byokBaseUrl, setByokBaseUrl] = useState(() => {
+    return localStorage.getItem("byok_base_url") || "";
+  });
+  const [byokApiKey, setByokApiKey] = useState(() => {
+    return localStorage.getItem("byok_api_key") || "";
+  });
+  const [byokModel, setByokModel] = useState(() => {
+    return localStorage.getItem("byok_model") || "";
+  });
+
+  // BYOK connection status: "idle" | "testing" | "success" | "error"
+  const [byokTestStatus, setByokTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [byokTestError, setByokTestError] = useState<string | null>(null);
+
   // Action/API states
+  const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -271,6 +294,56 @@ export default function App() {
     localStorage.setItem("atomic_notes_selected_model", selectedModel);
   }, [selectedModel]);
 
+  // Persist BYOK settings
+  useEffect(() => {
+    localStorage.setItem("byok_base_url", byokBaseUrl);
+  }, [byokBaseUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("byok_api_key", byokApiKey);
+  }, [byokApiKey]);
+
+  useEffect(() => {
+    localStorage.setItem("byok_model", byokModel);
+  }, [byokModel]);
+
+  const handleTestBYOKConnection = async () => {
+    if (!byokBaseUrl || !byokApiKey || !byokModel) {
+      setByokTestStatus("error");
+      setByokTestError("All fields (Base URL, API Key, and Model) are required to test the connection.");
+      return;
+    }
+
+    setByokTestStatus("testing");
+    setByokTestError(null);
+
+    try {
+      const response = await fetch("/api/byok/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          baseUrl: byokBaseUrl,
+          apiKey: byokApiKey,
+          model: byokModel
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setByokTestStatus("success");
+      } else {
+        setByokTestStatus("error");
+        setByokTestError(data.error || "Connection test failed.");
+      }
+    } catch (err: any) {
+      setByokTestStatus("error");
+      setByokTestError(err.message || "Network error. Make sure the server is running and the URL is correct.");
+    }
+  };
+
   // Trigger automatic URL mode toggle if pasting a URL in the textbox
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -299,6 +372,16 @@ export default function App() {
       return;
     }
 
+    if (selectedModel === "byok") {
+      if (!byokBaseUrl || !byokApiKey || !byokModel) {
+        setError("Please configure your Custom OpenAI Provider (BYOK) settings (Base URL, API Key, and Model) before synthesizing notes.");
+        setLoading(false);
+        // Switch back to input tab so they can see the settings configuration
+        setMobileTab("input");
+        return;
+      }
+    }
+
     setLoadingStep(ingestionMode === "url" ? "Fetching web article..." : "Analyzing source text...");
     
     // Switch to output tab so mobile users can immediately observe the loading steps/result
@@ -317,7 +400,12 @@ export default function App() {
         body: JSON.stringify({
           input,
           isUrl: ingestionMode === "url",
-          model: selectedModel
+          model: selectedModel,
+          byokConfig: selectedModel === "byok" ? {
+            baseUrl: byokBaseUrl,
+            apiKey: byokApiKey,
+            model: byokModel
+          } : undefined
         })
       });
 
@@ -933,9 +1021,9 @@ export default function App() {
                         value={sourceUrl}
                         onChange={(e) => setSourceUrl(e.target.value)}
                         placeholder="https://medium.com/pkm/atomic-notes-guide..." 
-                        className="w-full bg-[#0d0e12] border border-white/10 rounded-lg p-3 pl-10 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-gray-600 font-sans min-h-[44px]"
+                        className="w-full bg-[#12141e] border border-indigo-500/60 rounded-lg p-3 pl-10 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-gray-400 font-sans min-h-[44px] shadow-[0_0_15px_rgba(99,102,241,0.05)]"
                       />
-                      <span className="absolute left-3.5 top-3.5 text-gray-600">
+                      <span className="absolute left-3.5 top-3.5 text-indigo-400">
                         <Link2 size={16} />
                       </span>
                     </div>
@@ -952,7 +1040,7 @@ export default function App() {
                     <textarea 
                       value={rawText}
                       onChange={handleTextChange}
-                      className="bg-[#0d0e12] border border-white/10 rounded-lg p-3 md:p-4 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 transition-colors h-[280px] md:h-[350px] resize-none leading-relaxed placeholder:text-gray-600 font-sans custom-scrollbar" 
+                      className="bg-[#12141e] border border-indigo-500/60 rounded-lg p-3 md:p-4 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all h-[280px] md:h-[350px] resize-none leading-relaxed placeholder:text-gray-400 font-sans custom-scrollbar shadow-[0_0_15px_rgba(99,102,241,0.05)]" 
                       placeholder="Paste your source text, transcript, notes, or raw article contents here..."
                     />
                   </div>
@@ -969,46 +1057,165 @@ export default function App() {
                       {MODELS.find(m => m.id === selectedModel)?.name}
                     </span>
                   </div>
-                  
-                  <div className="grid grid-cols-1 gap-2">
-                    {MODELS.map((model) => {
-                      const isSelected = selectedModel === model.id;
-                      return (
-                        <button
-                          key={model.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedModel(model.id);
-                          }}
-                          className={`w-full text-left p-3 rounded-lg border transition-all relative flex flex-col gap-1 cursor-pointer select-none ${
-                            isSelected 
-                              ? 'bg-indigo-600/10 border-indigo-500/40 shadow-inner' 
-                              : 'bg-[#0d0e12] border-white/5 hover:border-white/10 hover:bg-[#0d0e12]/80'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <span className={`text-xs font-semibold ${isSelected ? 'text-indigo-200 font-bold' : 'text-gray-300'}`}>
-                              {model.name}
-                            </span>
-                            {model.badge && (
-                              <span className={`text-[8px] md:text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+
+                  {!showSettings ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowSettings(true)}
+                      className="w-full mt-2 py-2.5 px-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-300 border border-indigo-500/20 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Settings size={12} />
+                      Settings
+                    </button>
+                  ) : (
+                    <div className="animate-fade-in space-y-3 mt-3">
+                      <div className="grid grid-cols-1 gap-2">
+                        {MODELS.map((model) => {
+                          const isSelected = selectedModel === model.id;
+                          return (
+                            <button
+                              key={model.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedModel(model.id);
+                              }}
+                              className={`w-full text-left p-3 rounded-lg border transition-all relative flex flex-col gap-1 cursor-pointer select-none ${
                                 isSelected 
-                                  ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
-                                  : model.isPaid
-                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                    : 'bg-gray-800 text-gray-400'
-                              }`}>
-                                {model.badge}
+                                  ? 'bg-indigo-600/10 border-indigo-500/40 shadow-inner' 
+                                  : 'bg-[#0d0e12] border-white/5 hover:border-white/10 hover:bg-[#0d0e12]/80'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className={`text-xs font-semibold ${isSelected ? 'text-indigo-200 font-bold' : 'text-gray-300'}`}>
+                                  {model.name}
+                                </span>
+                                {model.badge && (
+                                  <span className={`text-[8px] md:text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                    isSelected 
+                                      ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                                      : model.isPaid
+                                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                        : 'bg-gray-800 text-gray-400'
+                                  }`}>
+                                    {model.badge}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-gray-500 leading-normal">
+                                {model.desc}
                               </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {selectedModel === "byok" && (
+                        <div className="mt-4 pt-4 border-t border-white/5 space-y-3.5 animate-fade-in">
+                          <div className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider">
+                            BYOK Configuration
+                          </div>
+                          
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-1 block">
+                                Base URL:
+                              </label>
+                              <input 
+                                type="url" 
+                                value={byokBaseUrl}
+                                onChange={(e) => {
+                                  setByokBaseUrl(e.target.value);
+                                  setByokTestStatus("idle");
+                                }}
+                                placeholder="e.g. https://api.openai.com/v1"
+                                className="w-full bg-[#0d0e12] border border-white/10 rounded px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-indigo-500 font-mono"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-1 block">
+                                API Key:
+                              </label>
+                              <input 
+                                type="password" 
+                                value={byokApiKey}
+                                onChange={(e) => {
+                                  setByokApiKey(e.target.value);
+                                  setByokTestStatus("idle");
+                                }}
+                                placeholder="sk-..."
+                                className="w-full bg-[#0d0e12] border border-white/10 rounded px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-indigo-500 font-mono"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-1 block">
+                                Model:
+                              </label>
+                              <input 
+                                type="text" 
+                                value={byokModel}
+                                onChange={(e) => {
+                                  setByokModel(e.target.value);
+                                  setByokTestStatus("idle");
+                                }}
+                                placeholder="e.g. gpt-4o"
+                                className="w-full bg-[#0d0e12] border border-white/10 rounded px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-indigo-500 font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pt-1.5 flex flex-col gap-2">
+                            <button
+                              type="button"
+                              onClick={handleTestBYOKConnection}
+                              disabled={byokTestStatus === "testing"}
+                              className={`w-full py-2 px-3 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[32px] cursor-pointer ${
+                                byokTestStatus === "testing"
+                                  ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 cursor-not-allowed"
+                                  : "bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500/30"
+                              }`}
+                            >
+                              {byokTestStatus === "testing" ? (
+                                <>
+                                  <RefreshCw size={12} className="animate-spin" />
+                                  Testing Connection...
+                                </>
+                              ) : (
+                                "Test Connection"
+                              )}
+                            </button>
+
+                            {byokTestStatus === "success" && (
+                              <div className="flex items-center gap-2 p-2.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs animate-fade-in">
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                                <span className="font-medium">Connection works!</span>
+                              </div>
+                            )}
+
+                            {byokTestStatus === "error" && byokTestError && (
+                              <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs leading-normal space-y-1 animate-fade-in">
+                                <div className="font-bold flex items-center gap-1">
+                                  ⚠️ Connection Failed
+                                </div>
+                                <div className="text-[11px] font-mono break-words">
+                                  {byokTestError}
+                                </div>
+                              </div>
                             )}
                           </div>
-                          <span className="text-[10px] text-gray-500 leading-normal">
-                            {model.desc}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowSettings(false)}
+                        className="w-full mt-2 py-2 px-3 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        Hide Settings
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

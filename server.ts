@@ -24,10 +24,84 @@ async function startServer() {
     }
   });
 
+  // API endpoint to test BYOK connection
+  app.post("/api/byok/test", async (req, res) => {
+    try {
+      const { baseUrl, apiKey, model } = req.body;
+      if (!baseUrl || !apiKey || !model) {
+        return res.status(400).json({ error: "Base URL, API Key, and Model are required." });
+      }
+
+      const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+      const endpoint = `${cleanBaseUrl}/chat/completions`;
+
+      console.log(`Testing BYOK connection to ${endpoint} with model ${model}...`);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: "user", content: "ping" }
+            ],
+            max_tokens: 5,
+            temperature: 0.1
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errText = await response.text();
+          let errDetail = errText;
+          try {
+            const parsed = JSON.parse(errText);
+            errDetail = parsed.error?.message || parsed.message || errText;
+          } catch (_) {}
+          
+          if (response.status === 401) {
+            return res.status(401).json({ error: "Unauthorized: Invalid API Key or authentication failed." });
+          }
+          if (response.status === 404) {
+            return res.status(404).json({ error: "Not Found: The endpoint was not found. Verify your Base URL (e.g. check if it needs to end with '/v1')." });
+          }
+          return res.status(response.status).json({ error: `Server returned status ${response.status}: ${errDetail}` });
+        }
+
+        const data = await response.json();
+        if (data.choices?.[0]?.message) {
+          return res.json({ success: true, message: "Connection verified successfully!" });
+        } else {
+          return res.status(502).json({ error: "Invalid response format. Response did not contain 'choices[0].message'." });
+        }
+
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (fetchErr.name === 'AbortError') {
+          return res.status(504).json({ error: "Request timed out. The server did not respond within 10 seconds." });
+        }
+        return res.status(500).json({ error: `Connection failed: ${fetchErr.message || fetchErr}` });
+      }
+
+    } catch (error: any) {
+      console.error("BYOK test error:", error);
+      res.status(500).json({ error: error.message || "An unexpected error occurred during connection test." });
+    }
+  });
+
   // API endpoint to fetch a URL and/or generate the atomic notes
   app.post("/api/generate", async (req, res) => {
     try {
-      const { input, isUrl, model } = req.body;
+      const { input, isUrl, model, byokConfig } = req.body;
       const selectedModel = model || "gemini-3.5-flash";
       if (!input) {
         return res.status(400).json({ error: "Input text or URL is required." });
@@ -61,13 +135,6 @@ async function startServer() {
             error: `Could not fetch or read the URL: ${err.message || err}. Please copy and paste the article's text content directly instead.` 
           });
         }
-      }
-
-      // Check for Gemini API key
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ 
-          error: "GEMINI_API_KEY is not configured. Please add it via Settings > Secrets." 
-        });
       }
 
       // Construct system prompt and user prompt
@@ -120,6 +187,60 @@ Current Date for Frontmatter: ${currentDate}
 
 Source Material:
 ${contentToAnalyze}`;
+
+      // Handle BYOK OpenAI compatible endpoint
+      if (selectedModel === "byok") {
+        if (!byokConfig || !byokConfig.baseUrl || !byokConfig.apiKey || !byokConfig.model) {
+          return res.status(400).json({ error: "BYOK configuration is incomplete. Please check your settings." });
+        }
+
+        const { baseUrl, apiKey, model: byokModel } = byokConfig;
+        const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        const endpoint = `${cleanBaseUrl}/chat/completions`;
+
+        console.log(`Calling BYOK (${byokModel}) at ${endpoint}...`);
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: byokModel,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: prompt }
+            ],
+            temperature: 0.2
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          let errDetail = errText;
+          try {
+            const parsed = JSON.parse(errText);
+            errDetail = parsed.error?.message || parsed.message || errText;
+          } catch (_) {}
+          throw new Error(`OpenAI compatible endpoint returned status ${response.status}: ${errDetail}`);
+        }
+
+        const data = await response.json();
+        const markdown = data.choices?.[0]?.message?.content;
+        if (!markdown) {
+          throw new Error("Empty response returned from OpenAI compatible endpoint. Check if the model name or API parameters are correct.");
+        }
+
+        return res.json({ markdown });
+      }
+
+      // Check for Gemini API key
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ 
+          error: "GEMINI_API_KEY is not configured. Please add it via Settings > Secrets." 
+        });
+      }
 
       console.log(`Calling Gemini (${selectedModel}) with content length: ${contentToAnalyze.length}...`);
 
