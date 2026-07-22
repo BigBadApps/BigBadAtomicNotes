@@ -38,7 +38,8 @@ export function parseJwt(token: string): any {
 
 export const GOOGLE_CLIENT_ID =
   (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
-  "299556828507-kiclj2qnevlics1mo8c35q5ugqp4vvbu.apps.googleusercontent.com";
+  (import.meta as any).env?.GOOGLE_CLIENT_ID ||
+  "";
 
 let isGsiInitialized = false;
 const globalSignInCallbacks = new Set<(user: GoogleUser) => void>();
