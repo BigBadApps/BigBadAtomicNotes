@@ -73,6 +73,62 @@ const MODELS = [
   }
 ];
 
+async function fetchArticleTextClient(url: string): Promise<string> {
+  try {
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const scripts = doc.querySelectorAll("script, style, svg, nav, footer, iframe");
+    scripts.forEach(s => s.remove());
+    const text = doc.body ? doc.body.textContent || "" : html;
+    return text.replace(/\s+/g, " ").trim().substring(0, 150000);
+  } catch (err: any) {
+    throw new Error(`Client-side URL fetch failed: ${err.message || err}. Please copy and paste the article text directly.`);
+  }
+}
+
+async function executeByokClientSynthesis(
+  input: string,
+  isUrl: boolean,
+  baseUrl: string,
+  apiKey: string,
+  model: string
+): Promise<string> {
+  let contentToAnalyze = input;
+  if (isUrl) {
+    contentToAnalyze = await fetchArticleTextClient(input);
+  }
+
+  const cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const endpoint = cleanBase.endsWith("/chat/completions") ? cleanBase : `${cleanBase}/chat/completions`;
+
+  const systemInstruction = `You are an expert knowledge manager. Analyze the provided text and distill its core ideas into single-concept atomic notes in Markdown format separated by thematic dividers (---). Ensure each note begins with YAML frontmatter.`;
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: contentToAnalyze }
+      ]
+    })
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Custom Provider returned error ${res.status}: ${errText.substring(0, 120)}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
+
 export default function App() {
   useEffect(() => {
     document.title = "BigBadAtomicNotes";
@@ -491,14 +547,24 @@ export default function App() {
         })
       });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Generation request failed");
+      let generatedMarkdown = "";
+      const contentType = response.headers.get("content-type") || "";
+
+      if (contentType.includes("application/json")) {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Generation request failed");
+        }
+        generatedMarkdown = data.markdown;
+      } else {
+        // If host returns HTML or non-JSON (e.g. 404 on static GitHub Pages deployment)
+        if (selectedModel === "byok") {
+          setLoadingStep("Executing Custom Provider directly from browser...");
+          generatedMarkdown = await executeByokClientSynthesis(input, ingestionMode === "url", byokBaseUrl, byokApiKey, byokModel);
+        } else {
+          throw new Error("Backend server API is not active on static GitHub Pages hosting. To synthesize URLs or text using Gemini models, please run the app locally (npm run dev) or switch to Custom Provider (BYOK).");
+        }
       }
-
-      setLoadingStep("Parsing BigBadAtomicNotes...");
-
-      const generatedMarkdown = data.markdown;
       const notes = parseMarkdownNotes(generatedMarkdown);
 
       if (notes.length === 0) {
