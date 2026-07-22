@@ -550,19 +550,16 @@ export default function App() {
       let generatedMarkdown = "";
       const contentType = response.headers.get("content-type") || "";
 
-      if (contentType.includes("application/json")) {
+      if (response.ok && contentType.includes("application/json")) {
         const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "Generation request failed");
-        }
         generatedMarkdown = data.markdown;
       } else {
-        // If host returns HTML or non-JSON (e.g. 404 on static GitHub Pages deployment)
+        // HTTP 405 / 404 / Non-JSON returned from static host (e.g. GitHub Pages)
         if (selectedModel === "byok") {
           setLoadingStep("Executing Custom Provider directly from browser...");
           generatedMarkdown = await executeByokClientSynthesis(input, ingestionMode === "url", byokBaseUrl, byokApiKey, byokModel);
         } else {
-          throw new Error("Backend server API is not active on static GitHub Pages hosting. To synthesize URLs or text using Gemini models, please run the app locally (npm run dev) or switch to Custom Provider (BYOK).");
+          throw new Error("Backend Node.js API server is not active on static GitHub Pages hosting. To synthesize web URLs or text using Gemini models, run the application locally (npm run dev) or use a Custom Provider (BYOK).");
         }
       }
       const notes = parseMarkdownNotes(generatedMarkdown);
