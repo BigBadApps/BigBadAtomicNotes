@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   FileText, 
   Link2, 
@@ -168,26 +168,44 @@ export default function App() {
     setEditableNotes(parsedNotes);
   }, [parsedNotes]);
 
-  // Helper to choose a local folder
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper to choose a local folder (Universal macOS, iOS, Windows, Linux)
   const handleSelectFolder = async () => {
     setFolderErrorMsg(null);
-    try {
-      if (!(window as any).showDirectoryPicker) {
-        setFolderErrorMsg("Folder picker API not supported. Type your folder name directly below.");
+
+    // 1. Try File System Access API first (Chrome/Edge on Desktop)
+    if ((window as any).showDirectoryPicker) {
+      try {
+        const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+        setLocalDirectoryHandle(handle);
+        setLocalFolderName(handle.name);
+        localStorage.setItem("atomic_notes_local_folder_name", handle.name);
         return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return; // User cancelled dialog
+        console.warn("Directory picker fallback to HTML5 file input:", err);
       }
-      const handle = await (window as any).showDirectoryPicker({
-        mode: 'readwrite'
-      });
-      setLocalDirectoryHandle(handle);
-      setLocalFolderName(handle.name);
-      localStorage.setItem("atomic_notes_local_folder_name", handle.name);
-    } catch (err: any) {
-      console.error("Directory picker error:", err);
-      if (err.name === 'SecurityError') {
-        setFolderErrorMsg("Sandbox restrictions prevent direct folder picker access in this preview frame. Please type your desired folder name below.");
-      } else if (err.name !== 'AbortError') {
-        setFolderErrorMsg(`Failed to select folder: ${err.message || err}`);
+    }
+
+    // 2. Universal Fallback for macOS Safari, iOS Files app, Firefox & Mobile
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    } else {
+      setFolderErrorMsg("Please type your target folder path directly in the text field.");
+    }
+  };
+
+  const handleFolderInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const firstFile = files[0];
+      const relPath = (firstFile as any).webkitRelativePath || "";
+      const folderName = relPath ? relPath.split("/")[0] : firstFile.name;
+      if (folderName) {
+        setLocalFolderName(folderName);
+        localStorage.setItem("atomic_notes_local_folder_name", folderName);
+        setFolderErrorMsg(null);
       }
     }
   };
@@ -845,6 +863,16 @@ export default function App() {
 
   return (
     <div id="atomic-notes-root" className="flex flex-col h-screen w-full bg-[#0d0e12] text-gray-200 font-sans overflow-hidden">
+      <input 
+        ref={fileInputRef} 
+        type="file" 
+        // @ts-ignore
+        webkitdirectory="true" 
+        directory="true" 
+        multiple 
+        className="hidden" 
+        onChange={handleFolderInputChange} 
+      />
       
       {/* Navigation bar with mobile hamburger & tabs */}
       <nav id="atomic-notes-nav" className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10 bg-[#12141a] z-30">
