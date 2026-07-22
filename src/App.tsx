@@ -20,9 +20,13 @@ import {
   Menu,
   X,
   Folder,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  LogIn,
+  ShieldCheck
 } from "lucide-react";
 import { parseMarkdownNotes, filterOutIndexNotes, ParsedNote } from "./types";
+import { GoogleAuth, GoogleUser } from "./GoogleAuth";
 
 interface HistoryItem {
   id: string;
@@ -40,6 +44,7 @@ const MODELS = [
     name: "Gemini 3.5 Flash",
     badge: "Recommended",
     desc: "Speed-optimized, high quality",
+    requiresGoogleAuth: true,
     isPaid: false
   },
   {
@@ -47,6 +52,7 @@ const MODELS = [
     name: "Gemini 3.1 Pro",
     badge: "Pro Preview",
     desc: "Deep analytical synthesis",
+    requiresGoogleAuth: true,
     isPaid: true
   },
   {
@@ -54,6 +60,7 @@ const MODELS = [
     name: "Gemini 3.1 Flash Lite",
     badge: "Fastest",
     desc: "Low-latency atomic splits",
+    requiresGoogleAuth: true,
     isPaid: false
   },
   {
@@ -61,6 +68,7 @@ const MODELS = [
     name: "Custom OpenAI Provider (BYOK)",
     badge: "BYOK",
     desc: "Use your own custom OpenAI-compatible API",
+    requiresGoogleAuth: false,
     isPaid: false
   }
 ];
@@ -69,6 +77,26 @@ export default function App() {
   useEffect(() => {
     document.title = "BigBadAtomicNotes";
   }, []);
+
+  // Google User Authentication State
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(() => {
+    try {
+      const saved = localStorage.getItem("atomic_notes_google_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleGoogleSignIn = (user: GoogleUser) => {
+    setGoogleUser(user);
+    localStorage.setItem("atomic_notes_google_user", JSON.stringify(user));
+  };
+
+  const handleGoogleSignOut = () => {
+    setGoogleUser(null);
+    localStorage.removeItem("atomic_notes_google_user");
+  };
 
   // Navigation & View tab states
   const [activeTab, setActiveTab] = useState<"cards" | "raw" | "help">("cards");
@@ -84,6 +112,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     return localStorage.getItem("atomic_notes_selected_model") || "gemini-3.5-flash";
   });
+  const selectedModelObj = MODELS.find(m => m.id === selectedModel) || MODELS[0];
   const [vaultName, setVaultName] = useState(() => {
     return localStorage.getItem("obsidian_vault_name") || "PersonalVault";
   });
@@ -396,6 +425,14 @@ export default function App() {
     if (ingestionMode === "url" && !input.startsWith("http://") && !input.startsWith("https://")) {
       setError("Please ensure the URL starts with http:// or https://");
       setLoading(false);
+      return;
+    }
+
+    const selectedModelObj = MODELS.find(m => m.id === selectedModel) || MODELS[0];
+    if (selectedModelObj.requiresGoogleAuth && !googleUser) {
+      setError("Google Sign-In is required to use Gemini synthesis models. Please sign in with your Google Account.");
+      setLoading(false);
+      setMobileTab("input");
       return;
     }
 
@@ -916,6 +953,8 @@ export default function App() {
               <Folder size={12} />
             </button>
           </div>
+
+          <GoogleAuth user={googleUser} onSignIn={handleGoogleSignIn} onSignOut={handleGoogleSignOut} buttonId="nav-google-signin" compact />
         </div>
       </nav>
 
@@ -1140,6 +1179,7 @@ export default function App() {
                       <div className="grid grid-cols-1 gap-2">
                         {MODELS.map((model) => {
                           const isSelected = selectedModel === model.id;
+                          const requiresAuth = model.requiresGoogleAuth && !googleUser;
                           return (
                             <button
                               key={model.id}
@@ -1154,20 +1194,34 @@ export default function App() {
                               }`}
                             >
                               <div className="flex items-center justify-between w-full">
-                                <span className={`text-xs font-semibold ${isSelected ? 'text-indigo-200 font-bold' : 'text-gray-300'}`}>
+                                <span className={`text-xs font-semibold flex items-center gap-1.5 ${isSelected ? 'text-indigo-200 font-bold' : 'text-gray-300'}`}>
+                                  {model.requiresGoogleAuth && (
+                                    googleUser ? (
+                                      <ShieldCheck size={12} className="text-emerald-400 shrink-0" title="Unlocked with Google Account" />
+                                    ) : (
+                                      <Lock size={12} className="text-amber-400 shrink-0" title="Google Sign-In Required" />
+                                    )
+                                  )}
                                   {model.name}
                                 </span>
-                                {model.badge && (
-                                  <span className={`text-[8px] md:text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                    isSelected 
-                                      ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
-                                      : model.isPaid
-                                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                        : 'bg-gray-800 text-gray-400'
-                                  }`}>
-                                    {model.badge}
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-1">
+                                  {requiresAuth && (
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                      Sign-In Req.
+                                    </span>
+                                  )}
+                                  {model.badge && (
+                                    <span className={`text-[8px] md:text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                      isSelected 
+                                        ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                                        : model.isPaid
+                                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                          : 'bg-gray-800 text-gray-400'
+                                    }`}>
+                                      {model.badge}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <span className="text-[10px] text-gray-500 leading-normal">
                                 {model.desc}
@@ -1293,19 +1347,41 @@ export default function App() {
                 </div>
               )}
 
+              {selectedModelObj.requiresGoogleAuth && !googleUser && (
+                <div className="p-4 bg-indigo-950/40 border border-indigo-500/30 rounded-xl space-y-3 text-left my-2 shadow-lg shadow-indigo-950/30">
+                  <div className="flex items-center gap-2 text-indigo-200 font-bold text-xs">
+                    <Lock size={15} className="text-amber-400 shrink-0" />
+                    <span>Google Account Sign-In Required</span>
+                  </div>
+                  <p className="text-[11px] text-gray-300 leading-relaxed">
+                    Gemini models (<strong className="text-white">{selectedModelObj.name}</strong>) are exclusively available when signed in to your Google Account.
+                  </p>
+                  <div className="pt-1 flex items-center justify-start">
+                    <GoogleAuth user={googleUser} onSignIn={handleGoogleSignIn} onSignOut={handleGoogleSignOut} buttonId="form-google-signin" />
+                  </div>
+                </div>
+              )}
+
               <button 
                 type="submit" 
-                disabled={loading}
+                disabled={loading || (selectedModelObj.requiresGoogleAuth && !googleUser)}
                 className={`w-full text-white font-bold py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2.5 tracking-wide text-sm min-h-[48px] ${
                   loading 
                     ? "bg-indigo-800/50 cursor-not-allowed text-indigo-400" 
-                    : "bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] hover:shadow-indigo-900/30 cursor-pointer"
+                    : selectedModelObj.requiresGoogleAuth && !googleUser
+                      ? "bg-gray-800/80 text-gray-400 border border-white/5 cursor-not-allowed"
+                      : "bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] hover:shadow-indigo-900/30 cursor-pointer"
                 }`}
               >
                 {loading ? (
                   <>
                     <RefreshCw className="animate-spin text-indigo-400" size={18} />
                     <span>{loadingStep || "Synthesizing..."}</span>
+                  </>
+                ) : selectedModelObj.requiresGoogleAuth && !googleUser ? (
+                  <>
+                    <Lock size={16} className="text-amber-400" />
+                    <span>Sign in with Google to Synthesize</span>
                   </>
                 ) : (
                   <>
