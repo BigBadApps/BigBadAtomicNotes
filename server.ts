@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -21,6 +22,92 @@ async function startServer() {
       headers: {
         'User-Agent': 'aistudio-build',
       }
+    }
+  });
+
+  // API endpoint to save markdown files directly to a local target folder
+  app.post("/api/save-files", async (req, res) => {
+    try {
+      const { targetPath, notes } = req.body;
+      if (!targetPath || !Array.isArray(notes) || notes.length === 0) {
+        return res.status(400).json({ error: "Target path and notes array are required." });
+      }
+
+      // Resolve home directory tilde paths (~/...)
+      let resolvedPath = targetPath.trim();
+      if (resolvedPath.startsWith("~")) {
+        resolvedPath = path.join(process.env.HOME || process.env.USERPROFILE || "", resolvedPath.slice(1));
+      }
+      if (!path.isAbsolute(resolvedPath)) {
+        resolvedPath = path.resolve(process.cwd(), resolvedPath);
+      }
+
+      // Create target directory if it doesn't exist
+      await fs.mkdir(resolvedPath, { recursive: true });
+
+      // Filter out any index.md or Index/MOC/Overview notes completely
+      const isMocCheck = (tStr: string, fnStr: string) => {
+        const t = (tStr || "").toLowerCase().trim();
+        const fn = (fnStr || "").toLowerCase().trim();
+        return (
+          t === "index" || t === "overview" || t === "moc" || t === "map of content" ||
+          t.includes("index") || t.includes("overview") || t.includes("map of content") ||
+          fn === "index.md" || fn === "overview.md" || fn.includes("index") || fn.includes("overview") || fn.includes("moc")
+        );
+      };
+
+      const processedNotes = notes.filter((n: any) => !isMocCheck(n.title, n.fileName));
+      if (processedNotes.length === 0) {
+        return res.status(400).json({ error: "No valid atomic notes to save after filtering index files." });
+      }
+
+      const savedFiles: string[] = [];
+      const usedFileNames = new Set<string>();
+
+      for (let i = 0; i < processedNotes.length; i++) {
+        const note = processedNotes[i];
+        let title = note.title || `Atomic Note ${i + 1}`;
+        let baseName = note.fileName ? note.fileName.replace(/\.md$/i, '') : title;
+        baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || `Note ${i + 1}`;
+        
+        let fileName = `${baseName}.md`;
+        let counter = 1;
+        while (usedFileNames.has(fileName.toLowerCase())) {
+          counter++;
+          fileName = `${baseName} (${counter}).md`;
+        }
+        usedFileNames.add(fileName.toLowerCase());
+
+        const filePath = path.join(resolvedPath, fileName);
+        await fs.writeFile(filePath, note.content || "", "utf-8");
+        savedFiles.push(fileName);
+      }
+
+      console.log(`Saved ${savedFiles.length} file(s) directly to "${resolvedPath}"`);
+
+      // Post-save cleanup: Delete any index.md or index sync-conflict files in target directory
+      try {
+        const dirFiles = await fs.readdir(resolvedPath);
+        for (const f of dirFiles) {
+          const lower = f.toLowerCase();
+          if (lower === "index.md" || lower.startsWith("index.sync-conflict") || lower === "overview.md") {
+            await fs.unlink(path.join(resolvedPath, f));
+            console.log(`Cleaned up index file "${f}" from "${resolvedPath}"`);
+          }
+        }
+      } catch (cleanupErr) {
+        console.warn("Index cleanup warning:", cleanupErr);
+      }
+
+      return res.json({
+        success: true,
+        folderPath: resolvedPath,
+        savedFiles,
+        message: `Successfully saved ${savedFiles.length} file(s) to "${resolvedPath}"`
+      });
+    } catch (err: any) {
+      console.error("Save files API error:", err);
+      return res.status(500).json({ error: err.message || "Failed to write files to disk." });
     }
   });
 
@@ -141,7 +228,7 @@ async function startServer() {
       const systemInstruction = `You are an expert knowledge manager and BigBadAtomicNotes practitioner. Your primary goal is to analyze provided articles, texts, or URLs and distill their core ideas into a series of highly dense, single-concept "atomic notes" formatted specifically for an Obsidian vault. 
 
 Objective:
-Do not simply summarize the article. Instead, deconstruct it into standalone, reusable building blocks of knowledge. Format the output as distinct Markdown code blocks so they can be easily copied and pasted into separate Obsidian .md files.
+Do not simply summarize the article. Instead, deconstruct it into standalone, reusable building blocks of knowledge. Format each note in clean Markdown separated by thematic dividers (---). Do NOT wrap notes in code block fences.
 
 Core Rules:
 1. Atomicity: Each note must focus on *one* single, specific concept or idea. If a topic requires multiple distinct ideas to explain, split it into multiple notes.
@@ -150,9 +237,8 @@ Core Rules:
 4. Formatting: Use strict Markdown. Each note must begin with YAML frontmatter.
 
 Note Template:
-For every atomic concept you identify, output a separate code block using the exact structure below:
+For every atomic concept you identify, output a separate note using the exact structure below:
 
-\`\`\`markdown
 ---
 aliases: [{Alternative name 1}, {Alternative name 2}]
 tags: [{tag1}, {tag2}, {tag3}]
@@ -172,13 +258,13 @@ date: {Current Date}
 - [[{Broad Category/Parent Concept}]]
 - [[{Related Specific Concept 1}]]
 - [[{Related Specific Concept 2}]]
-\`\`\`
 
 Execution Steps:
 1. Read and analyze the provided text/URL.
 2. Identify 3 to 7 (depending on length) distinct, high-value atomic concepts.
 3. Generate the Markdown notes using the exact template above, separating each note with a thematic divider (---). 
-4. Ensure every note can be read and understood completely independently of the original article.`;
+4. Ensure every note can be read and understood completely independently of the original article.
+5. Do NOT output any "Index", "Overview", "MOC", or "Map of Content" note under any circumstances. Output ONLY the standalone, individual atomic concept notes.`;
 
       const currentDate = new Date().toISOString().split('T')[0];
       const prompt = `Analyze the following source material and generate the atomic notes.

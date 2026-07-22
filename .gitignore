@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+00_Inbox/
+atomic_notes_export/

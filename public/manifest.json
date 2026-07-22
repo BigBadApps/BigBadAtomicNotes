@@ -1,0 +1,16 @@
+{
+  "short_name": "BigBadAtomicNotes",
+  "name": "BigBadAtomicNotes",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "64x64 128x128 192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0d0e12",
+  "theme_color": "#6366f1",
+  "display": "standalone"
+}

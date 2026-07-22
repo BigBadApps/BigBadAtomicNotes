@@ -22,7 +22,7 @@ import {
   Folder,
   AlertCircle
 } from "lucide-react";
-import { parseMarkdownNotes, ParsedNote } from "./types";
+import { parseMarkdownNotes, filterOutIndexNotes, ParsedNote } from "./types";
 
 interface HistoryItem {
   id: string;
@@ -66,6 +66,10 @@ const MODELS = [
 ];
 
 export default function App() {
+  useEffect(() => {
+    document.title = "BigBadAtomicNotes";
+  }, []);
+
   // Navigation & View tab states
   const [activeTab, setActiveTab] = useState<"cards" | "raw" | "help">("cards");
   const [ingestionMode, setIngestionMode] = useState<"url" | "text">("url");
@@ -128,6 +132,7 @@ export default function App() {
   const [editableNotes, setEditableNotes] = useState<ParsedNote[]>([]);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [lastSavedFolderPath, setLastSavedFolderPath] = useState<string>("");
 
   // Sync editableNotes with parsedNotes when parsedNotes is loaded/generated
   useEffect(() => {
@@ -209,67 +214,89 @@ export default function App() {
   const handleSaveAllToLocalFolder = async () => {
     if (editableNotes.length === 0) return;
 
-    let savedFilesCount = 0;
-    const datePrefix = getFormattedDatePrefix(); // YYYY:mm:dd:hh
-    const isDirectoryApi = !!localDirectoryHandle;
+    const targetFolder = localFolderName || vaultName;
+    let savedDirectly = false;
 
-    try {
-      for (const note of editableNotes) {
-        // generate a brief note name based on the content/title
-        const briefName = note.title.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 50).trim() || "note";
-        const customFileName = `${datePrefix} - ${briefName}.md`;
-
-        if (localDirectoryHandle) {
-          const fileHandle = await localDirectoryHandle.getFileHandle(customFileName, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(note.content);
-          await writable.close();
-          savedFilesCount++;
-        } else {
-          // Fallback download
-          const blob = new Blob([note.content], { type: "text/markdown;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = customFileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          savedFilesCount++;
+    if (targetFolder && !localDirectoryHandle) {
+      try {
+        const response = await fetch("/api/save-files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetPath: targetFolder,
+            notes: filterOutIndexNotes(editableNotes)
+          })
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+          savedDirectly = true;
+          if (data.folderPath) setLastSavedFolderPath(data.folderPath);
+          setSaveStatus({ success: true, message: data.message });
         }
+      } catch (err) {
+        console.warn("Direct save error:", err);
       }
-
-      // Save the edited notes to History too, so the history persists the edits
-      const timestampStr = `${new Date().toLocaleDateString()} • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-      const newHistoryItem: HistoryItem = {
-        id: Date.now().toString(),
-        title: editableNotes[0]?.title || "Saved Notes",
-        timestamp: timestampStr,
-        rawMarkdown: editableNotes.map(n => `\`\`\`markdown\n${n.content}\n\`\`\``).join("\n\n"),
-        notes: [...editableNotes],
-        sourceInput: rawText || sourceUrl,
-        isUrl: ingestionMode === "url"
-      };
-
-      setHistory(prev => {
-        const updated = [newHistoryItem, ...prev.slice(0, 19)];
-        localStorage.setItem("atomic_notes_history", JSON.stringify(updated));
-        return updated;
-      });
-
-      const msg = isDirectoryApi 
-        ? `Successfully created ${savedFilesCount} file(s) in your local folder: "${localFolderName}"!` 
-        : `Successfully saved ${savedFilesCount} file(s) with custom filenames containing date-prefix.`;
-
-      setSaveStatus({ success: true, message: msg });
-      setTimeout(() => setSaveStatus(null), 5000);
-
-    } catch (err: any) {
-      console.error("Save error:", err);
-      setSaveStatus({ success: false, message: `Failed to save notes: ${err.message || err}` });
-      setTimeout(() => setSaveStatus(null), 6000);
     }
+
+    if (!savedDirectly) {
+      let savedFilesCount = 0;
+      const datePrefix = getFormattedDatePrefix();
+
+      try {
+        for (const note of editableNotes) {
+          const briefName = note.title.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 50).trim() || "note";
+          const customFileName = `${datePrefix} - ${briefName}.md`;
+
+          if (localDirectoryHandle) {
+            const fileHandle = await localDirectoryHandle.getFileHandle(customFileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(note.content);
+            await writable.close();
+            savedFilesCount++;
+          } else {
+            const blob = new Blob([note.content], { type: "text/markdown;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = customFileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            savedFilesCount++;
+          }
+        }
+
+        setSaveStatus({
+          success: true,
+          message: localDirectoryHandle 
+            ? `Successfully created ${savedFilesCount} file(s) in your local folder: "${localFolderName}"!`
+            : `Downloaded ${savedFilesCount} file(s) to your default browser downloads folder.`
+        });
+      } catch (err: any) {
+        setSaveStatus({ success: false, message: `Failed to save files: ${err.message || err}` });
+      }
+    }
+
+    // Save the edited notes to History too
+    const timestampStr = `${new Date().toLocaleDateString()} • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const newHistoryItem: HistoryItem = {
+      id: Date.now().toString(),
+      title: editableNotes[0]?.title || "Saved Notes",
+      timestamp: timestampStr,
+      rawMarkdown: editableNotes.map(n => n.content).join("\n\n---\n\n"),
+      notes: [...editableNotes],
+      sourceInput: rawText || sourceUrl,
+      isUrl: ingestionMode === "url"
+    };
+
+    setHistory(prev => {
+      const updated = [newHistoryItem, ...prev.slice(0, 19)];
+      localStorage.setItem("atomic_notes_history", JSON.stringify(updated));
+      return updated;
+    });
+
+    setTimeout(() => setSaveStatus(null), 5000);
   };
 
   // Load history on mount
@@ -423,7 +450,11 @@ export default function App() {
         console.warn("No structured markdown notes could be parsed. Using raw block fallback.");
       }
 
-      setRawMarkdown(generatedMarkdown);
+      const cleanRawMarkdown = notes.length > 0
+        ? notes.map(n => n.content).join("\n\n---\n\n")
+        : generatedMarkdown.replace(/^```(?:markdown)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+
+      setRawMarkdown(cleanRawMarkdown);
       setParsedNotes(notes);
 
       // Determine a nice display title for this synthesis session
@@ -445,7 +476,7 @@ export default function App() {
         id: Date.now().toString(),
         title: displayTitle,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " • " + new Date().toLocaleDateString(),
-        rawMarkdown: generatedMarkdown,
+        rawMarkdown: cleanRawMarkdown,
         notes,
         sourceInput: input,
         isUrl: ingestionMode === "url"
@@ -520,10 +551,38 @@ export default function App() {
     }
   };
 
-  const downloadAllAsFiles = () => {
+  const downloadAllAsFiles = async () => {
     if (parsedNotes.length === 0) return;
+
+    const notesToDownload = filterOutIndexNotes(parsedNotes);
+    if (notesToDownload.length === 0) return;
     
-    parsedNotes.forEach(note => {
+    const targetFolder = localFolderName || vaultName;
+
+    if (targetFolder) {
+      try {
+        const response = await fetch("/api/save-files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetPath: targetFolder,
+            notes: notesToDownload
+          })
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+          if (data.folderPath) setLastSavedFolderPath(data.folderPath);
+          setSaveStatus({ success: true, message: data.message });
+          setTimeout(() => setSaveStatus(null), 8000);
+          return; // Direct save succeeded - do NOT trigger secondary browser downloads!
+        }
+      } catch (err) {
+        console.warn("Direct file save error, falling back to browser download:", err);
+      }
+    }
+
+    // Fallback ONLY: Trigger browser file downloads if direct server save is unavailable
+    notesToDownload.forEach(note => {
       const blob = new Blob([note.content], { type: "text/markdown;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -533,6 +592,12 @@ export default function App() {
       link.click();
       document.body.removeChild(link);
     });
+
+    setSaveStatus({
+      success: true,
+      message: `Downloaded ${notesToDownload.length} file(s) to your default browser downloads folder.`
+    });
+    setTimeout(() => setSaveStatus(null), 8000);
   };
 
   // Construct Obsidian local URI protocol for a specific note
@@ -789,7 +854,7 @@ export default function App() {
                 : 'text-gray-400 hover:text-gray-200'
             }`}
           >
-            Vault
+            Output
             {parsedNotes.length > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 border border-[#0d0e12] rounded-full"></span>
             )}
@@ -822,31 +887,34 @@ export default function App() {
 
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-400">Save Folder:</span>
-            <div className="flex items-center gap-1.5 bg-[#0d0e12] border border-white/10 rounded px-2.5 py-1.5">
-              <button
-                type="button"
-                onClick={handleSelectFolder}
-                className="text-xs text-indigo-300 hover:text-indigo-200 font-semibold flex items-center gap-1.5 cursor-pointer bg-transparent border-none p-0 focus:outline-none"
-                title="Click to select local directory for saving .md notes"
-              >
-                <Folder size={12} className="text-indigo-400" />
-                {localFolderName ? (localFolderName.length > 15 ? `${localFolderName.substring(0, 12)}...` : localFolderName) : "Select Folder"}
-              </button>
-              {localFolderName && (
-                <button
-                  type="button"
-                  onClick={() => {
+            <div className="relative flex items-center">
+              <span className="absolute left-2.5 text-gray-500">
+                <Folder size={12} />
+              </span>
+              <input 
+                type="text" 
+                value={localFolderName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setLocalFolderName(val);
+                  localStorage.setItem("atomic_notes_local_folder_name", val);
+                  if (localDirectoryHandle && val !== localDirectoryHandle.name) {
                     setLocalDirectoryHandle(null);
-                    setLocalFolderName("");
-                    localStorage.removeItem("atomic_notes_local_folder_name");
-                  }}
-                  className="text-gray-500 hover:text-red-400 focus:outline-none ml-1 bg-transparent border-none p-0 cursor-pointer"
-                  title="Clear selected folder"
-                >
-                  <X size={11} />
-                </button>
-              )}
+                  }
+                }}
+                placeholder="Path to folder..."
+                className="bg-[#0d0e12] border border-white/10 rounded px-2.5 py-1.5 pl-7 text-xs text-indigo-300 focus:outline-none focus:border-indigo-500 w-44 font-mono"
+                title="Target Folder Path on your computer (e.g. /Users/name/Vault or relative folder path)"
+              />
             </div>
+            <button
+              type="button"
+              onClick={handleSelectFolder}
+              className="p-1.5 bg-[#0d0e12] hover:bg-white/5 border border-white/10 rounded text-xs text-indigo-300 transition-colors cursor-pointer flex items-center justify-center min-h-[30px]"
+              title="Browse directory"
+            >
+              <Folder size={12} />
+            </button>
           </div>
         </div>
       </nav>
@@ -1257,7 +1325,7 @@ export default function App() {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h2 className="text-base md:text-lg font-medium text-white flex items-center gap-1.5">
                   <Layers size={16} className="text-indigo-400" />
-                  Output Vault
+                  Output
                 </h2>
                 {parsedNotes.length > 0 && (
                   <>
@@ -1277,41 +1345,7 @@ export default function App() {
               </div>
 
               {/* Subtab selection views */}
-              <div className="flex bg-[#12141a] rounded-lg p-0.5 border border-white/5 self-start sm:self-auto">
-                <button 
-                  onClick={() => setActiveTab("cards")}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-all flex items-center gap-1 font-medium min-h-[28px] ${
-                    activeTab === "cards" 
-                      ? 'bg-indigo-600 text-white shadow' 
-                      : 'text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <Layers size={11} />
-                  Cards
-                </button>
-                <button 
-                  onClick={() => setActiveTab("raw")}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-all flex items-center gap-1 font-medium min-h-[28px] ${
-                    activeTab === "raw" 
-                      ? 'bg-indigo-600 text-white shadow' 
-                      : 'text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <FileCode size={11} />
-                  Raw
-                </button>
-                <button 
-                  onClick={() => setActiveTab("help")}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-all flex items-center gap-1 font-medium min-h-[28px] ${
-                    activeTab === "help" 
-                      ? 'bg-indigo-600 text-white shadow' 
-                      : 'text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <BookOpen size={11} />
-                  Guide
-                </button>
-              </div>
+
             </div>
 
             {/* Inactive synthesis state placeholder */}
@@ -1362,34 +1396,9 @@ export default function App() {
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4 bg-[#12141a] p-3 rounded-lg border border-white/5 text-xs">
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-gray-400 flex items-center gap-1">
-                      Target: <strong className="text-indigo-300 font-mono">{vaultName}</strong>
+                      Export filepath: <strong className="text-indigo-300 font-mono">{lastSavedFolderPath || localFolderName || vaultName}</strong>
                     </span>
-                    <div className="flex bg-[#0d0e12] rounded-lg p-0.5 border border-white/5">
-                      <button 
-                        type="button"
-                        onClick={() => setGlobalCardView("markdown")}
-                        className={`px-2.5 py-1 text-[10px] md:text-xs rounded-md transition-all font-semibold flex items-center gap-1.5 min-h-[26px] ${
-                          globalCardView === "markdown" 
-                            ? 'bg-indigo-600 text-white shadow font-bold' 
-                            : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                      >
-                        <FileCode size={11} />
-                        Markdown (Obsidian)
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => setGlobalCardView("preview")}
-                        className={`px-2.5 py-1 text-[10px] md:text-xs rounded-md transition-all font-semibold flex items-center gap-1.5 min-h-[26px] ${
-                          globalCardView === "preview" 
-                            ? 'bg-indigo-600 text-white shadow font-bold' 
-                            : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                      >
-                        <Layers size={11} />
-                        Card Preview
-                      </button>
-                    </div>
+
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
@@ -1421,24 +1430,7 @@ export default function App() {
                       Edit details below. Save writes notes to folder or auto-downloads.
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                    <button 
-                      type="button"
-                      onClick={() => setShowCancelConfirmation(true)}
-                      className="flex-1 sm:flex-none px-3.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 active:scale-95 text-red-400 border border-red-500/25 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-[34px] flex items-center justify-center gap-1.5"
-                    >
-                      <X size={13} />
-                      Cancel Note
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={handleSaveAllToLocalFolder}
-                      className="flex-1 sm:flex-none px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-md hover:shadow-indigo-500/15 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-[34px] flex items-center justify-center gap-1.5"
-                    >
-                      <Download size={13} />
-                      Save Draft
-                    </button>
-                  </div>
+
                 </div>
 
                 {/* Save status message */}
