@@ -962,8 +962,8 @@ export default function App() {
             <Menu size={20} />
           </button>
 
-          <div className="w-8 h-8 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-extrabold text-lg shadow-md shadow-indigo-500/20 shrink-0">
-            Ω
+          <div className="w-8 h-8 rounded-full bg-[#0d0e12] border border-indigo-500/40 p-1 flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0 relative overflow-hidden group">
+            <img src="./favicon.svg" alt="BigBadAtomicNotes Icon" className="w-full h-full object-contain transform group-hover:rotate-45 transition-transform duration-500" />
           </div>
           <div>
             <h1 className="text-sm md:text-lg font-semibold tracking-tight text-white flex items-center gap-2">
