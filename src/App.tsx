@@ -543,7 +543,7 @@ export default function App() {
           setLoadingStep("Executing Custom Provider directly from browser...");
           generatedMarkdown = await executeByokClientSynthesis(input, ingestionMode === "url", byokBaseUrl, byokApiKey, byokModel);
         } else {
-          throw new Error("The backend Node.js server API is required for Gemini model synthesis. On static GitHub Pages hosting, please run the application locally (npm run dev) or switch to Custom Provider (BYOK).");
+          throw new Error("⚡ GitHub Pages is running in Static SPA mode without a backend Node.js server. For Gemini model synthesis and direct Obsidian Vault saving, please open the local application at http://localhost:3003/ (npm run dev) or select Custom Provider (BYOK).");
         }
       } else {
         const response = await fetch("/api/generate", {
@@ -971,6 +971,23 @@ export default function App() {
               <span className="text-xs font-normal text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full uppercase tracking-widest hidden sm:inline-block">
                 v1.1
               </span>
+              {window.location.hostname.includes("github.io") || window.location.hostname.includes("pages.dev") ? (
+                <a 
+                  href="http://localhost:3003/" 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="text-[10px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 hover:bg-amber-500/20 transition-colors"
+                  title="GitHub Pages is in Static Mode. Click to open Local Node Server (http://localhost:3003) for Gemini models & direct Vault folder saving."
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                  Static Host (Click for Local App)
+                </a>
+              ) : (
+                <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  Node Server Active
+                </span>
+              )}
             </h1>
           </div>
         </div>
