@@ -8,3 +8,6 @@ coverage/
 !.env.example
 00_Inbox/
 atomic_notes_export/
+agent-log.md
+agent-log*
+.agents/
