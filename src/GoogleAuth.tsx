@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { LogIn, LogOut, ShieldCheck, User } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 
 export interface GoogleUser {
   email: string;
@@ -40,6 +40,35 @@ export const GOOGLE_CLIENT_ID =
   (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
   "299556828507-kiclj2qnevlics1mo8c35q5ugqp4vvbu.apps.googleusercontent.com";
 
+let isGsiInitialized = false;
+const globalSignInCallbacks = new Set<(user: GoogleUser) => void>();
+
+function initializeGoogleIdentity(clientId: string, callback: (user: GoogleUser) => void) {
+  globalSignInCallbacks.add(callback);
+
+  if (!isGsiInitialized && (window as any).google?.accounts?.id) {
+    isGsiInitialized = true;
+    (window as any).google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (response: any) => {
+        if (response.credential) {
+          const payload = parseJwt(response.credential);
+          if (payload) {
+            const newUser: GoogleUser = {
+              email: payload.email,
+              name: payload.name || payload.email.split("@")[0],
+              picture: payload.picture,
+              sub: payload.sub,
+              token: response.credential
+            };
+            globalSignInCallbacks.forEach((cb) => cb(newUser));
+          }
+        }
+      }
+    });
+  }
+}
+
 export function GoogleAuth({
   user,
   onSignIn,
@@ -53,49 +82,30 @@ export function GoogleAuth({
   useEffect(() => {
     if (user) return;
 
-    const initializeGsi = () => {
-      if ((window as any).google?.accounts?.id) {
-        (window as any).google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response: any) => {
-            if (response.credential) {
-              const payload = parseJwt(response.credential);
-              if (payload) {
-                const newUser: GoogleUser = {
-                  email: payload.email,
-                  name: payload.name || payload.email.split("@")[0],
-                  picture: payload.picture,
-                  sub: payload.sub,
-                  token: response.credential
-                };
-                onSignIn(newUser);
-              }
-            }
-          }
-        });
+    const setupGsiButton = () => {
+      initializeGoogleIdentity(clientId, onSignIn);
 
-        if (buttonRef.current) {
-          (window as any).google.accounts.id.renderButton(buttonRef.current, {
-            theme: "filled_blue",
-            size: compact ? "medium" : "large",
-            text: "signin_with",
-            shape: "rectangular",
-            logo_alignment: "left"
-          });
-        }
+      if ((window as any).google?.accounts?.id && buttonRef.current) {
+        buttonRef.current.innerHTML = ""; // Clear existing button before rendering
+        (window as any).google.accounts.id.renderButton(buttonRef.current, {
+          theme: "filled_blue",
+          size: compact ? "medium" : "large",
+          text: "signin_with",
+          shape: "rectangular",
+          logo_alignment: "left"
+        });
       }
     };
 
-    // If GSI script is loaded, initialize immediately; otherwise poll briefly
     if ((window as any).google?.accounts?.id) {
-      initializeGsi();
+      setupGsiButton();
     } else {
       const interval = setInterval(() => {
         if ((window as any).google?.accounts?.id) {
           clearInterval(interval);
-          initializeGsi();
+          setupGsiButton();
         }
-      }, 300);
+      }, 250);
       return () => clearInterval(interval);
     }
   }, [user, clientId, compact, onSignIn]);
@@ -126,7 +136,7 @@ export function GoogleAuth({
 
         <button
           onClick={onSignOut}
-          className="ml-1 text-gray-400 hover:text-red-400 p-1 transition-colors rounded hover:bg-white/5"
+          className="ml-1 text-gray-400 hover:text-red-400 p-1 transition-colors rounded hover:bg-white/5 cursor-pointer"
           title="Sign out of Google Account"
         >
           <LogOut size={14} />

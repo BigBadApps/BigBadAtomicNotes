@@ -532,34 +532,47 @@ export default function App() {
         setLoadingStep(`Processing source content with ${activeModel.name}...`);
       }, 800);
 
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input,
-          isUrl: ingestionMode === "url",
-          model: selectedModel,
-          byokConfig: selectedModel === "byok" ? {
-            baseUrl: byokBaseUrl,
-            apiKey: byokApiKey,
-            model: byokModel
-          } : undefined
-        })
-      });
-
       let generatedMarkdown = "";
-      const contentType = response.headers.get("content-type") || "";
+      const isStaticHost = 
+        window.location.hostname.includes("github.io") || 
+        window.location.hostname.includes("pages.dev") || 
+        window.location.protocol === "file:";
 
-      if (response.ok && contentType.includes("application/json")) {
-        const data = await response.json();
-        generatedMarkdown = data.markdown;
-      } else {
-        // HTTP 405 / 404 / Non-JSON returned from static host (e.g. GitHub Pages)
+      if (isStaticHost) {
         if (selectedModel === "byok") {
           setLoadingStep("Executing Custom Provider directly from browser...");
           generatedMarkdown = await executeByokClientSynthesis(input, ingestionMode === "url", byokBaseUrl, byokApiKey, byokModel);
         } else {
-          throw new Error("Backend Node.js API server is not active on static GitHub Pages hosting. To synthesize web URLs or text using Gemini models, run the application locally (npm run dev) or use a Custom Provider (BYOK).");
+          throw new Error("The backend Node.js server API is required for Gemini model synthesis. On static GitHub Pages hosting, please run the application locally (npm run dev) or switch to Custom Provider (BYOK).");
+        }
+      } else {
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input,
+            isUrl: ingestionMode === "url",
+            model: selectedModel,
+            byokConfig: selectedModel === "byok" ? {
+              baseUrl: byokBaseUrl,
+              apiKey: byokApiKey,
+              model: byokModel
+            } : undefined
+          })
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+
+        if (response.ok && contentType.includes("application/json")) {
+          const data = await response.json();
+          generatedMarkdown = data.markdown;
+        } else {
+          if (selectedModel === "byok") {
+            setLoadingStep("Executing Custom Provider directly from browser...");
+            generatedMarkdown = await executeByokClientSynthesis(input, ingestionMode === "url", byokBaseUrl, byokApiKey, byokModel);
+          } else {
+            throw new Error("Backend Node.js API server returned an invalid response. Please run the application locally using 'npm run dev'.");
+          }
         }
       }
       const notes = parseMarkdownNotes(generatedMarkdown);
