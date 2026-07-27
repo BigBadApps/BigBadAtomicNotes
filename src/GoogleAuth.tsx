@@ -83,6 +83,14 @@ export function GoogleAuth({
   useEffect(() => {
     if (user) return;
 
+    if (!clientId) {
+      console.error(
+        "Google sign-in is misconfigured: VITE_GOOGLE_CLIENT_ID was not set at build time, " +
+          "so no OAuth client_id is available. Rebuild with --build-arg VITE_GOOGLE_CLIENT_ID=<your_client_id>."
+      );
+      return;
+    }
+
     const setupGsiButton = () => {
       initializeGoogleIdentity(clientId, onSignIn);
 

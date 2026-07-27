@@ -96,8 +96,14 @@ Open **[http://localhost:3003](http://localhost:3003)** in your web browser.
 ## 🐳 Docker & Google Cloud Run Deployment
 
 ### Build Local `linux/amd64` Image
+`VITE_GOOGLE_CLIENT_ID` is compiled into the static frontend bundle by Vite at
+build time, so it must be passed as a `--build-arg` here — setting it later via
+`gcloud run deploy --set-env-vars` has no effect on the already-built bundle
+and will cause Google Sign-In to fail with `Error 400: invalid_request`.
 ```bash
-docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/gen-lang-client-0360433070/bigbadapps-repo/bigbadatomicnotes:v1 .
+docker build --platform linux/amd64 \
+  --build-arg VITE_GOOGLE_CLIENT_ID=your_google_client_id_here.apps.googleusercontent.com \
+  -t us-central1-docker.pkg.dev/gen-lang-client-0360433070/bigbadapps-repo/bigbadatomicnotes:v1 .
 ```
 
 ### Push to Google Artifact Registry
