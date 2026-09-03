@@ -1,9 +1,68 @@
 @import "tailwindcss";
 
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Emil Kowalski signature tactile press interaction */
+.btn-press {
+  transition: transform 160ms var(--ease-out), background-color 150ms ease, border-color 150ms ease;
+  will-change: transform;
+}
+
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Natural scale(0.95) entrance animation for modals & popovers */
+@keyframes emilScaleEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-scale-in {
+  animation: emilScaleEnter 200ms var(--ease-out) forwards;
+}
+
+/* Subtle drawer slide-in */
+@keyframes emilDrawerSlide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-drawer-in {
+  animation: emilDrawerSlide 220ms var(--ease-out) forwards;
+}
+
+/* Smooth fade in */
+@keyframes emilFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: emilFadeIn 160ms var(--ease-out) forwards;
+}
+
 /* Custom scrollbar utility styles */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {

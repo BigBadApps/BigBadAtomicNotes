@@ -189,7 +189,7 @@ async function startServer() {
   app.post("/api/generate", async (req, res) => {
     try {
       const { input, isUrl, model, byokConfig } = req.body;
-      const selectedModel = model || "gemini-3.5-flash";
+      const selectedModel = model || "gemini-3.8-flash";
       if (!input) {
         return res.status(400).json({ error: "Input text or URL is required." });
       }
