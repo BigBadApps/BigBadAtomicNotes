@@ -11,3 +11,6 @@ atomic_notes_export/
 agent-log.md
 agent-log*
 .agents/
+.omc/
+docs/
+

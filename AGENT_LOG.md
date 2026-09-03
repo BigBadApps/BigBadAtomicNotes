@@ -4,7 +4,7 @@ This log tracks project configuration changes, architecture decisions, and syste
 
 ## 2026-07-17
 ### 1. Project Directory Migration & Git Sync
-- **What**: Migrated all codebase files from `/Users/robertburmaster/antigravity/Obsidian-Zettelkasten-Generator` to `/Volumes/BigBadDrive_1/BigBadAtomicNotes`.
+- **What**: Migrated all codebase files from the legacy workspace to `/Volumes/BigBadDrive_1/BigBadAtomicNotes`.
 - **Why**: Moved the project to the external drive `/Volumes/BigBadDrive_1` for dedicated storage and version control isolation.
 - **Git Push**: Initialized git and pushed the codebase to the remote repository `https://github.com/BigBadApps/BigBadAtomicNotes.git`.
 
@@ -14,7 +14,7 @@ This log tracks project configuration changes, architecture decisions, and syste
 - **Impact**: Standardized all DOM IDs, localStorage keys, system instruction prompts, and UI headers under the new `BigBadAtomicNotes` branding.
 
 ### 3. Local Workspace Restoration (Cloud Run Sync)
-- **What**: Synced the updated, renamed project files back to the original workspace folder at `/Users/robertburmaster/antigravity/Obsidian-Zettelkasten-Generator` (excluding `node_modules` and `.git` folders).
+- **What**: Synced the updated, renamed project files back to `/Users/robertburmaster/antigravity/BigBadAtomicNotes` (excluding `node_modules` and `.git` folders).
 - **Why**: Restored the local directory so that the Google AI Studio / Cloud Run app synchronization mechanism continues to function and deploy the code to Google Cloud Run correctly.
 
 ### 4. launchd & caffeinate Persistent Service
