@@ -1077,7 +1077,7 @@ export default function App() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn)}
+                      onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn, true)}
                       className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium underline underline-offset-2 cursor-pointer transition-colors"
                     >
                       Show Prompt
@@ -1095,7 +1095,7 @@ export default function App() {
                     />
                     <button
                       type="button"
-                      onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn)}
+                      onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn, true)}
                       className="text-xs px-3 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border border-indigo-500/30 rounded-lg flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
                     >
                       <LogIn size={13} />
@@ -1109,7 +1109,7 @@ export default function App() {
               {selectedModelObj.requiresGoogleAuth && !googleUser ? (
                 <button 
                   type="button" 
-                  onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn)}
+                  onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn, true)}
                   className="w-full py-3 px-4 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 btn-press cursor-pointer shadow-lg shadow-indigo-950/30 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97]"
                 >
                   <Lock size={14} className="text-amber-300" />

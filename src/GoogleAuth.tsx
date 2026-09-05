@@ -39,9 +39,10 @@ export function parseJwt(token: string): any {
 export const GOOGLE_CLIENT_ID =
   (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
   (import.meta as any).env?.GOOGLE_CLIENT_ID ||
-  "";
+  "299556828507-kiclj2qnevlics1mo8c35q5ugqp4vvbu.apps.googleusercontent.com";
 
 let isGsiInitialized = false;
+let hasAutoPrompted = false;
 const globalSignInCallbacks = new Set<(user: GoogleUser) => void>();
 
 export function initializeGoogleIdentity(
@@ -79,7 +80,8 @@ export function initializeGoogleIdentity(
 
 export function promptGoogleSignIn(
   clientId: string = GOOGLE_CLIENT_ID,
-  callback?: (user: GoogleUser) => void
+  callback?: (user: GoogleUser) => void,
+  force: boolean = false
 ) {
   if (callback) {
     globalSignInCallbacks.add(callback);
@@ -89,6 +91,11 @@ export function promptGoogleSignIn(
     console.error("Cannot prompt Google Sign-In: missing client ID.");
     return;
   }
+
+  if (!force && hasAutoPrompted) {
+    return;
+  }
+  hasAutoPrompted = true;
 
   const triggerPrompt = () => {
     initializeGoogleIdentity(clientId, callback);
@@ -185,6 +192,7 @@ export function GoogleAuth({
   }, [user, clientId, compact]);
 
   const handleSignOutClick = () => {
+    hasAutoPrompted = false;
     if ((window as any).google?.accounts?.id) {
       (window as any).google.accounts.id.disableAutoSelect();
     }
