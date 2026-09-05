@@ -44,8 +44,13 @@ export const GOOGLE_CLIENT_ID =
 let isGsiInitialized = false;
 const globalSignInCallbacks = new Set<(user: GoogleUser) => void>();
 
-function initializeGoogleIdentity(clientId: string, callback: (user: GoogleUser) => void) {
-  globalSignInCallbacks.add(callback);
+export function initializeGoogleIdentity(
+  clientId: string,
+  callback?: (user: GoogleUser) => void
+) {
+  if (callback) {
+    globalSignInCallbacks.add(callback);
+  }
 
   if (!isGsiInitialized && (window as any).google?.accounts?.id) {
     isGsiInitialized = true;
@@ -65,8 +70,68 @@ function initializeGoogleIdentity(clientId: string, callback: (user: GoogleUser)
             globalSignInCallbacks.forEach((cb) => cb(newUser));
           }
         }
-      }
+      },
+      auto_select: true,
+      use_fedcm_for_prompt: true
     });
+  }
+}
+
+export function promptGoogleSignIn(
+  clientId: string = GOOGLE_CLIENT_ID,
+  callback?: (user: GoogleUser) => void
+) {
+  if (callback) {
+    globalSignInCallbacks.add(callback);
+  }
+
+  if (!clientId) {
+    console.error("Cannot prompt Google Sign-In: missing client ID.");
+    return;
+  }
+
+  const triggerPrompt = () => {
+    initializeGoogleIdentity(clientId, callback);
+    if ((window as any).google?.accounts?.id) {
+      try {
+        (window as any).google.accounts.id.prompt((notification: any) => {
+          if (notification?.isNotDisplayed?.()) {
+            console.warn(
+              "Google Sign-In prompt not displayed:",
+              notification.getNotDisplayedReason?.()
+            );
+          } else if (notification?.isSkippedMoment?.()) {
+            console.log(
+              "Google Sign-In prompt skipped:",
+              notification.getSkippedReason?.()
+            );
+          } else if (notification?.isDismissedMoment?.()) {
+            console.log(
+              "Google Sign-In prompt dismissed:",
+              notification.getDismissedReason?.()
+            );
+          }
+        });
+      } catch (err) {
+        console.error("Error triggering Google Sign-In prompt:", err);
+      }
+    }
+  };
+
+  if ((window as any).google?.accounts?.id) {
+    triggerPrompt();
+  } else {
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if ((window as any).google?.accounts?.id) {
+        clearInterval(interval);
+        triggerPrompt();
+      } else if (attempts > 30) {
+        clearInterval(interval);
+        console.warn("Google Identity Services script did not load within 7.5 seconds.");
+      }
+    }, 250);
   }
 }
 
@@ -117,7 +182,14 @@ export function GoogleAuth({
       }, 250);
       return () => clearInterval(interval);
     }
-  }, [user, clientId, compact, onSignIn]);
+  }, [user, clientId, compact]);
+
+  const handleSignOutClick = () => {
+    if ((window as any).google?.accounts?.id) {
+      (window as any).google.accounts.id.disableAutoSelect();
+    }
+    onSignOut();
+  };
 
   if (user) {
     return (
@@ -144,7 +216,7 @@ export function GoogleAuth({
         </div>
 
         <button
-          onClick={onSignOut}
+          onClick={handleSignOutClick}
           className="ml-1 text-gray-400 hover:text-red-400 p-1 transition-colors rounded hover:bg-white/5 cursor-pointer"
           title="Sign out of Google Account"
         >
@@ -156,7 +228,11 @@ export function GoogleAuth({
 
   return (
     <div className="flex items-center gap-2">
-      <div ref={buttonRef} id={buttonId}></div>
+      <div 
+        ref={buttonRef} 
+        id={buttonId}
+        className={compact ? "min-h-[36px]" : "min-h-[40px]"}
+      ></div>
     </div>
   );
 }
