@@ -24,3 +24,14 @@ This log tracks project configuration changes, architecture decisions, and syste
   - Spawns the process using `/usr/bin/caffeinate -i` to prevent system sleep while the server is active.
   - Automatically loads and runs on system boot/login, keeping it alive continuously.
 - **Logs**: Output is directed to `launchd-stdout.log` and `launchd-stderr.log` in the local workspace directory.
+
+## 2026-09-05
+### 1. Restoration of Google Signon Prompt & Auth Flow
+- **What**: Restored the Google Signon Prompt (`google.accounts.id.prompt()`) for unauthenticated sessions and enhanced the "Google Sign-In Required" UX.
+- **Root Cause**: `google.accounts.id.prompt()` was omitted during the design refresh, and `GoogleAuth.tsx` did not configure `auto_select: true` or `use_fedcm_for_prompt: true`. Unmemoized callbacks in `App.tsx` were causing repeated DOM clears on `buttonRef.current`, while the Primary CTA button remained disabled with no clickable action.
+- **Files Modified**: `src/GoogleAuth.tsx`, `src/App.tsx`, `AGENT_LOG.md`.
+- **Impact**:
+  1. On page load, unauthenticated users automatically receive the native Google Signon Prompt (One Tap / FedCM).
+  2. Users can trigger the prompt on demand via the "Show Prompt" or "Sign In with Google" buttons in the "Google Sign-In Required" alert.
+  3. The Primary Synthesize button switches to an active "Sign in with Google to Synthesize" trigger rather than a disabled dead end.
+  4. Callbacks in `App.tsx` are wrapped with `useCallback`, and sign-out invokes `disableAutoSelect()`.

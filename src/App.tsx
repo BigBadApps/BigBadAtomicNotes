@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   FileText, 
   Link2, 
@@ -21,10 +21,11 @@ import {
   X, 
   ChevronDown, 
   FolderCheck,
-  RefreshCw
+  RefreshCw,
+  LogIn
 } from "lucide-react";
 import { parseMarkdownNotes, filterOutIndexNotes, ParsedNote } from "./types";
-import { GoogleAuth, GoogleUser } from "./GoogleAuth";
+import { GoogleAuth, GoogleUser, promptGoogleSignIn, GOOGLE_CLIENT_ID } from "./GoogleAuth";
 
 interface HistoryItem {
   id: string;
@@ -150,15 +151,25 @@ export default function App() {
     }
   });
 
-  const handleGoogleSignIn = (user: GoogleUser) => {
+  const handleGoogleSignIn = useCallback((user: GoogleUser) => {
     setGoogleUser(user);
     localStorage.setItem("atomic_notes_google_user", JSON.stringify(user));
-  };
+  }, []);
 
-  const handleGoogleSignOut = () => {
+  const handleGoogleSignOut = useCallback(() => {
     setGoogleUser(null);
     localStorage.removeItem("atomic_notes_google_user");
-  };
+    if ((window as any).google?.accounts?.id) {
+      (window as any).google.accounts.id.disableAutoSelect();
+    }
+  }, []);
+
+  // Restore Google Signon Prompt function when user is not already signed-on
+  useEffect(() => {
+    if (!googleUser) {
+      promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn);
+    }
+  }, [googleUser, handleGoogleSignIn]);
 
   // Navigation & View tab states
   const [ingestionMode, setIngestionMode] = useState<"url" | "text">("url");
@@ -497,6 +508,7 @@ export default function App() {
     const selectedModelObj = MODELS.find(m => m.id === selectedModel) || MODELS[0];
     if (selectedModelObj.requiresGoogleAuth && !googleUser) {
       setError("Google Sign-In is required to use Gemini models. Please sign in with your Google Account.");
+      promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn);
       setLoading(false);
       setMobileTab("input");
       return;
@@ -1057,49 +1069,75 @@ export default function App() {
 
               {/* Google Sign-in Prompt if Needed */}
               {selectedModelObj.requiresGoogleAuth && !googleUser && (
-                <div className="p-3.5 bg-indigo-950/20 border border-indigo-500/20 rounded-xl space-y-2 text-left animate-fade-in">
-                  <div className="flex items-center gap-1.5 text-indigo-300 font-semibold text-xs">
-                    <Lock size={13} className="text-amber-400 shrink-0" />
-                    <span>Google Sign-In Required</span>
+                <div className="p-3.5 bg-indigo-950/20 border border-indigo-500/20 rounded-xl space-y-2.5 text-left animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-indigo-300 font-semibold text-xs">
+                      <Lock size={13} className="text-amber-400 shrink-0" />
+                      <span>Google Sign-In Required</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn)}
+                      className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium underline underline-offset-2 cursor-pointer transition-colors"
+                    >
+                      Show Prompt
+                    </button>
                   </div>
                   <p className="text-[11px] text-gray-400">
                     To use {selectedModelObj.name}, sign in with your Google Account.
                   </p>
-                  <div className="pt-1">
+                  <div className="pt-1 flex flex-wrap items-center gap-2.5">
                     <GoogleAuth 
                       user={googleUser} 
                       onSignIn={handleGoogleSignIn} 
                       onSignOut={handleGoogleSignOut} 
                       buttonId="form-google-signin" 
                     />
+                    <button
+                      type="button"
+                      onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn)}
+                      className="text-xs px-3 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border border-indigo-500/30 rounded-lg flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
+                    >
+                      <LogIn size={13} />
+                      <span>Sign In with Google</span>
+                    </button>
                   </div>
                 </div>
               )}
 
               {/* Primary Synthesize CTA */}
-              <button 
-                type="submit" 
-                disabled={loading || (selectedModelObj.requiresGoogleAuth && !googleUser)}
-                className={`w-full py-3 px-4 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 btn-press cursor-pointer shadow-lg shadow-indigo-950/30 ${
-                  loading 
-                    ? "bg-indigo-800/40 text-indigo-300 cursor-not-allowed" 
-                    : selectedModelObj.requiresGoogleAuth && !googleUser
-                      ? "bg-gray-800 text-gray-500 border border-white/5 cursor-not-allowed"
+              {selectedModelObj.requiresGoogleAuth && !googleUser ? (
+                <button 
+                  type="button" 
+                  onClick={() => promptGoogleSignIn(GOOGLE_CLIENT_ID, handleGoogleSignIn)}
+                  className="w-full py-3 px-4 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 btn-press cursor-pointer shadow-lg shadow-indigo-950/30 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97]"
+                >
+                  <Lock size={14} className="text-amber-300" />
+                  <span>Sign in with Google to Synthesize</span>
+                </button>
+              ) : (
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className={`w-full py-3 px-4 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 btn-press cursor-pointer shadow-lg shadow-indigo-950/30 ${
+                    loading 
+                      ? "bg-indigo-800/40 text-indigo-300 cursor-not-allowed" 
                       : "bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97]"
-                }`}
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="animate-spin text-indigo-300" size={15} />
-                    <span>{loadingStep || "Synthesizing..."}</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={15} className="text-indigo-200" />
-                    <span>Synthesize Atomic Notes</span>
-                  </>
-                )}
-              </button>
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="animate-spin text-indigo-300" size={15} />
+                      <span>{loadingStep || "Synthesizing..."}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={15} className="text-indigo-200" />
+                      <span>Synthesize Atomic Notes</span>
+                    </>
+                  )}
+                </button>
+              )}
             </form>
           </section>
 
