@@ -41,3 +41,13 @@ This log tracks project configuration changes, architecture decisions, and syste
 - **Root Cause**: `.github/workflows/deploy.yml` executed `npm run build` without providing `VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}`, causing Vite to build with an empty `client_id` for GitHub Pages. `GoogleAuth.tsx` lacked a fallback to the authorized client ID.
 - **Files Modified**: `.github/workflows/deploy.yml`, `src/GoogleAuth.tsx`, `src/App.tsx`, `AGENT_LOG.md`.
 - **Impact**: GitHub Pages (`https://bigbadapps.github.io/BigBadAtomicNotes/`) and local/container builds consistently bundle the authorized client ID, eliminating the console error and enabling Google Signon Prompt.
+
+### 3. Direct Local Vault Save via File System Access API
+- **What**: Fixed the "Save Vault" function so notes save directly to the user's local directory on their Mac via the HTML5 File System Access API, with IndexedDB handle persistence.
+- **Root Cause**: When running on Google Cloud Run, clicking "Save Vault" sent a `POST /api/save-files` to the remote server. The Cloud Run container was creating the local directory path inside its ephemeral Linux container in Google Cloud and returning HTTP 200, creating a false confirmation toast while leaving the user's actual Mac vault empty.
+- **Files Modified**: `src/App.tsx`, `src/idb.ts`, `server.ts`, `AGENT_LOG.md`.
+- **Impact**:
+  1. In Brave/Chrome, clicking "Save Vault" writes notes directly to the chosen local directory on the user's machine using `FileSystemDirectoryHandle`.
+  2. If no directory handle is active, `showDirectoryPicker` is automatically invoked to let the user select their vault folder.
+  3. The directory handle is persisted in IndexedDB so subsequent saves require zero re-prompting.
+  4. Remote Cloud Run containers now block `/api/save-files` from silently writing to container storage.

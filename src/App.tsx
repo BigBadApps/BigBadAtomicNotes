@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { parseMarkdownNotes, filterOutIndexNotes, ParsedNote } from "./types";
 import { GoogleAuth, GoogleUser, promptGoogleSignIn, GOOGLE_CLIENT_ID } from "./GoogleAuth";
+import { getStoredDirectoryHandle, storeDirectoryHandle } from "./idb";
 
 interface HistoryItem {
   id: string;
@@ -250,6 +251,24 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Restore directory handle from IndexedDB if available
+  useEffect(() => {
+    async function restoreDirectory() {
+      if ((window as any).showDirectoryPicker) {
+        try {
+          const stored = await getStoredDirectoryHandle();
+          if (stored) {
+            setLocalDirectoryHandle(stored);
+            setLocalFolderName(stored.name);
+          }
+        } catch (e) {
+          console.warn("Failed to restore directory handle from IndexedDB:", e);
+        }
+      }
+    }
+    restoreDirectory();
+  }, []);
+
   // Folder selection helper
   const handleSelectFolder = async () => {
     setFolderErrorMsg(null);
@@ -259,10 +278,11 @@ export default function App() {
         setLocalDirectoryHandle(handle);
         setLocalFolderName(handle.name);
         localStorage.setItem("atomic_notes_local_folder_name", handle.name);
+        await storeDirectoryHandle(handle);
         return;
       } catch (err: any) {
         if (err.name === 'AbortError') return;
-        console.warn("Directory picker fallback to HTML5 file input:", err);
+        console.warn("Directory picker error:", err);
       }
     }
 
@@ -330,87 +350,164 @@ export default function App() {
   const handleSaveAllToLocalFolder = async () => {
     if (editableNotes.length === 0) return;
 
-    const targetFolder = localFolderName || vaultName;
-    let savedDirectly = false;
+    const validNotes = filterOutIndexNotes(editableNotes);
+    if (validNotes.length === 0) return;
 
-    if (targetFolder && !localDirectoryHandle) {
+    const isLocalHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    let dirHandle = localDirectoryHandle;
+
+    // 1. If we don't have an active directory handle, try to restore from IndexedDB
+    if (!dirHandle && (window as any).showDirectoryPicker) {
       try {
-        const response = await fetch("/api/save-files", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            targetPath: targetFolder,
-            notes: filterOutIndexNotes(editableNotes)
-          })
-        });
-        const data = await response.json();
-        if (response.ok && data.success) {
-          savedDirectly = true;
-          setSaveStatus({ success: true, message: data.message });
+        const stored = await getStoredDirectoryHandle();
+        if (stored) {
+          dirHandle = stored;
+          setLocalDirectoryHandle(stored);
+          setLocalFolderName(stored.name);
         }
       } catch (err) {
-        console.warn("Direct save error:", err);
+        console.warn("Error reading stored directory handle:", err);
       }
     }
 
-    if (!savedDirectly) {
-      let savedFilesCount = 0;
-      const datePrefix = getFormattedDatePrefix();
-
+    // 2. On remote hosts (Cloud Run / GitHub Pages), direct browser File System Access is required
+    // If we still don't have a directory handle, prompt the user to choose their vault folder
+    if (!dirHandle && !isLocalHost && (window as any).showDirectoryPicker) {
       try {
-        for (const note of editableNotes) {
-          const briefName = note.title.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 50).trim() || "note";
-          const customFileName = `${datePrefix} - ${briefName}.md`;
+        dirHandle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+        setLocalDirectoryHandle(dirHandle);
+        setLocalFolderName(dirHandle.name);
+        localStorage.setItem("atomic_notes_local_folder_name", dirHandle.name);
+        await storeDirectoryHandle(dirHandle);
+      } catch (err: any) {
+        if (err.name === "AbortError") {
+          return; // User cancelled the folder picker
+        }
+        console.warn("showDirectoryPicker failed or was rejected:", err);
+      }
+    }
 
-          if (localDirectoryHandle) {
-            const fileHandle = await localDirectoryHandle.getFileHandle(customFileName, { create: true });
-            const writable = await fileHandle.createWritable();
-            await writable.write(note.content);
-            await writable.close();
-            savedFilesCount++;
-          } else {
-            const blob = new Blob([note.content], { type: "text/markdown;charset=utf-8" });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = customFileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            savedFilesCount++;
+    // Helper to record history after successful save
+    const recordHistory = (notesToSave: ParsedNote[]) => {
+      const timestampStr = `${new Date().toLocaleDateString()} • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      const newHistoryItem: HistoryItem = {
+        id: Date.now().toString(),
+        title: notesToSave[0]?.title || "Saved Notes",
+        timestamp: timestampStr,
+        rawMarkdown: notesToSave.map(n => n.content).join("\n\n---\n\n"),
+        notes: [...notesToSave],
+        sourceInput: rawText || sourceUrl,
+        isUrl: ingestionMode === "url"
+      };
+
+      setHistory(prev => {
+        const updated = [newHistoryItem, ...prev.slice(0, 19)];
+        localStorage.setItem("atomic_notes_history", JSON.stringify(updated));
+        return updated;
+      });
+
+      setTimeout(() => setSaveStatus(null), 4000);
+    };
+
+    // 3. If we have a directory handle (in Brave/Chrome), check/request readwrite permission
+    if (dirHandle) {
+      try {
+        let hasPermission = false;
+        if ((dirHandle as any).queryPermission) {
+          const status = await (dirHandle as any).queryPermission({ mode: "readwrite" });
+          if (status === "granted") {
+            hasPermission = true;
+          } else if ((dirHandle as any).requestPermission) {
+            const reqStatus = await (dirHandle as any).requestPermission({ mode: "readwrite" });
+            hasPermission = reqStatus === "granted";
           }
+        } else {
+          hasPermission = true;
+        }
+
+        if (!hasPermission) {
+          dirHandle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+          setLocalDirectoryHandle(dirHandle);
+          setLocalFolderName(dirHandle.name);
+          localStorage.setItem("atomic_notes_local_folder_name", dirHandle.name);
+          await storeDirectoryHandle(dirHandle);
+        }
+
+        let savedCount = 0;
+        for (const note of validNotes) {
+          let baseName = note.fileName ? note.fileName.replace(/\.md$/i, "") : note.title;
+          baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
+          const fileName = `${baseName}.md`;
+
+          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(note.content);
+          await writable.close();
+          savedCount++;
         }
 
         setSaveStatus({
           success: true,
-          message: localDirectoryHandle 
-            ? `Saved ${savedFilesCount} file(s) to "${localFolderName}".`
-            : `Downloaded ${savedFilesCount} file(s) to your Downloads folder.`
+          message: `Saved ${savedCount} file(s) directly to "${dirHandle.name}".`
         });
+
+        recordHistory(validNotes);
+        return;
       } catch (err: any) {
-        setSaveStatus({ success: false, message: `Failed to save files: ${err.message || err}` });
+        console.error("File System Access API save error:", err);
+        if (err.name === "AbortError") return;
       }
     }
 
-    const timestampStr = `${new Date().toLocaleDateString()} • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const newHistoryItem: HistoryItem = {
-      id: Date.now().toString(),
-      title: editableNotes[0]?.title || "Saved Notes",
-      timestamp: timestampStr,
-      rawMarkdown: editableNotes.map(n => n.content).join("\n\n---\n\n"),
-      notes: [...editableNotes],
-      sourceInput: rawText || sourceUrl,
-      isUrl: ingestionMode === "url"
-    };
+    // 4. If running locally on localhost/127.0.0.1, the local Node.js server can write directly to disk
+    if (isLocalHost) {
+      const targetFolder = localFolderName || vaultName;
+      if (targetFolder) {
+        try {
+          const response = await fetch("/api/save-files", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              targetPath: targetFolder,
+              notes: validNotes
+            })
+          });
+          const data = await response.json();
+          if (response.ok && data.success) {
+            setSaveStatus({ success: true, message: data.message });
+            recordHistory(validNotes);
+            return;
+          }
+        } catch (err) {
+          console.warn("Direct local server save error:", err);
+        }
+      }
+    }
 
-    setHistory(prev => {
-      const updated = [newHistoryItem, ...prev.slice(0, 19)];
-      localStorage.setItem("atomic_notes_history", JSON.stringify(updated));
-      return updated;
+    // 5. Fallback if File System Access API is not supported (e.g. Safari / Firefox)
+    let downloadedCount = 0;
+    for (const note of validNotes) {
+      let baseName = note.fileName ? note.fileName.replace(/\.md$/i, "") : note.title;
+      baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
+      const fileName = `${baseName}.md`;
+
+      const blob = new Blob([note.content], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      downloadedCount++;
+    }
+
+    setSaveStatus({
+      success: true,
+      message: `Downloaded ${downloadedCount} file(s) to your Downloads folder.`
     });
-
-    setTimeout(() => setSaveStatus(null), 4000);
+    recordHistory(validNotes);
   };
 
   useEffect(() => {
@@ -1428,7 +1525,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleSelectFolder}
-                    className="px-3 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold btn-press flex items-center gap-1.5 shrink-0"
+                    className="px-3 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold btn-press flex items-center gap-1.5 shrink-0 cursor-pointer"
                   >
                     <Folder size={13} />
                     Browse
@@ -1438,7 +1535,11 @@ export default function App() {
                   <span className="text-[10px] text-amber-400 block">{folderErrorMsg}</span>
                 )}
                 <span className="text-[10px] text-gray-500 block">
-                  Server writes notes directly to this path when you click "Save Vault".
+                  {localDirectoryHandle 
+                    ? `Active vault folder: "${localDirectoryHandle.name}" (Direct local File System save)`
+                    : (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+                      ? "Server writes notes directly to this path when running locally."
+                      : "Click 'Browse' to select your vault folder on your machine."}
                 </span>
               </div>
 
