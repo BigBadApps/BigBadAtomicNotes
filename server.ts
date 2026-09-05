@@ -28,6 +28,14 @@ async function startServer() {
   // API endpoint to save markdown files directly to a local target folder
   app.post("/api/save-files", async (req, res) => {
     try {
+      // Guard against saving to remote container filesystem when running on Cloud Run
+      const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
+      if (process.env.K_SERVICE || (!isLocalhost && process.env.NODE_ENV === "production")) {
+        return res.status(400).json({
+          error: "Direct server-side save is only supported when running locally on your computer. When using Cloud Run, please use the browser's local folder save (File System Access API)."
+        });
+      }
+
       const { targetPath, notes } = req.body;
       if (!targetPath || !Array.isArray(notes) || notes.length === 0) {
         return res.status(400).json({ error: "Target path and notes array are required." });
