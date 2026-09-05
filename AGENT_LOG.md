@@ -35,3 +35,9 @@ This log tracks project configuration changes, architecture decisions, and syste
   2. Users can trigger the prompt on demand via the "Show Prompt" or "Sign In with Google" buttons in the "Google Sign-In Required" alert.
   3. The Primary Synthesize button switches to an active "Sign in with Google to Synthesize" trigger rather than a disabled dead end.
   4. Callbacks in `App.tsx` are wrapped with `useCallback`, and sign-out invokes `disableAutoSelect()`.
+
+### 2. GitHub Pages & Static Build Client ID Injection Fix
+- **What**: Added `VITE_GOOGLE_CLIENT_ID` environment variable to the Build step in `.github/workflows/deploy.yml` and added the GCP Authorized Client ID fallback in `src/GoogleAuth.tsx`.
+- **Root Cause**: `.github/workflows/deploy.yml` executed `npm run build` without providing `VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}`, causing Vite to build with an empty `client_id` for GitHub Pages. `GoogleAuth.tsx` lacked a fallback to the authorized client ID.
+- **Files Modified**: `.github/workflows/deploy.yml`, `src/GoogleAuth.tsx`, `src/App.tsx`, `AGENT_LOG.md`.
+- **Impact**: GitHub Pages (`https://bigbadapps.github.io/BigBadAtomicNotes/`) and local/container builds consistently bundle the authorized client ID, eliminating the console error and enabling Google Signon Prompt.
