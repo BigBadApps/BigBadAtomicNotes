@@ -32,8 +32,12 @@ export function parseMarkdownNotes(rawText: string): ParsedNote[] {
       .replace(/^```\s*$/gm, '')
       .trim();
 
-    // Split on boundaries where a new YAML frontmatter block or H1 header begins
-    const blocks = strippedText.split(/(?=\n---\s*\n(?:aliases:|tags:|source:|date:))|(?=\n#\s+)/i);
+    // Split on boundaries where a new YAML frontmatter block begins, or (if no frontmatter) where an H1 header begins
+    const hasFrontmatter = /---\s*\r?\n(?:aliases:|tags:|source:|date:)/i.test(strippedText);
+    const blocks = hasFrontmatter
+      ? strippedText.split(/(?=\n---\s*\r?\n(?:aliases:|tags:|source:|date:))/i)
+      : strippedText.split(/(?=\n#\s+)/i);
+
     for (const block of blocks) {
       const trimmedBlock = block.trim();
       if (!trimmedBlock || trimmedBlock.length < 20) continue;
@@ -78,9 +82,10 @@ export function filterOutIndexNotes(notes: ParsedNote[]): ParsedNote[] {
 }
 
 function addNoteFromContent(notes: ParsedNote[], noteContent: string) {
-  const cleanContent = noteContent
+  let cleanContent = noteContent
     .replace(/^```(?:markdown)?\s*\n?/gi, '')
     .replace(/\n?```\s*$/gi, '')
+    .replace(/(?:\r?\n)+---\s*$/, '')
     .trim();
 
   if (!cleanContent || cleanContent.length < 10) return;
@@ -160,9 +165,33 @@ function addNoteFromContent(notes: ParsedNote[], noteContent: string) {
     const dateMatch = fmContent.match(/date:\s*([^\r\n]+)/i);
 
     if (aliasesMatch) aliases = aliasesMatch[1].replace(/['"\[\]]/g, '').trim();
-    if (tagsMatch) tags = tagsMatch[1].replace(/['"\[\]]/g, '').trim();
     if (sourceMatch) source = sourceMatch[1].replace(/['"]/g, '').trim();
     if (dateMatch) date = dateMatch[1].trim();
+
+    let tagsList: string[] = [];
+    if (tagsMatch) {
+      tagsList = tagsMatch[1]
+        .split(',')
+        .map(t => t.replace(/['"\[\]#]/g, '').trim())
+        .filter(Boolean);
+    }
+    if (!tagsList.some(t => t.toLowerCase() === 'atomicnote')) {
+      tagsList.unshift('atomicnote');
+    }
+    tags = tagsList.join(', ');
+
+    // Ensure atomicnote tag is in the YAML frontmatter of the note content
+    const formattedTags = `tags: [${tagsList.join(', ')}]`;
+    let newFmContent = fmContent;
+    if (tagsMatch) {
+      newFmContent = fmContent.replace(/tags:\s*\[?[^\]\r\n]+\]?/i, formattedTags);
+    } else {
+      newFmContent = `${fmContent.trim()}\n${formattedTags}\n`;
+    }
+    cleanContent = cleanContent.replace(/^---[\s\S]*?---/, `---${newFmContent}---`);
+  } else {
+    tags = "atomicnote";
+    cleanContent = `---\ntags: [atomicnote]\n---\n${cleanContent}`;
   }
 
   notes.push({

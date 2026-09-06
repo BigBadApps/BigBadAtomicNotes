@@ -243,13 +243,14 @@ Core Rules:
 2. Synthesis over Copying: Explain the concept in your own words. Be concise, insightful, and high-density. Use bullet points for readability where appropriate.
 3. Wikilinking: Aggressively identify key terms, broad themes, or related concepts and wrap them in Obsidian wikilinks (e.g., [[Cognitive Load]]). Do this naturally within the body text and in a dedicated "Related" section.
 4. Formatting: Use strict Markdown. Each note must begin with YAML frontmatter.
+5. Tagging: Every note MUST include the 'atomicnote' tag in its YAML frontmatter 'tags' list (e.g., tags: [atomicnote, tag1, tag2]).
 
 Note Template:
 For every atomic concept you identify, output a separate note using the exact structure below:
 
 ---
 aliases: [{Alternative name 1}, {Alternative name 2}]
-tags: [{tag1}, {tag2}, {tag3}]
+tags: [atomicnote, {tag1}, {tag2}]
 source: {URL or Title of the provided text}
 date: {Current Date}
 ---
@@ -270,7 +271,7 @@ date: {Current Date}
 Execution Steps:
 1. Read and analyze the provided text/URL.
 2. Identify 3 to 7 (depending on length) distinct, high-value atomic concepts.
-3. Generate the Markdown notes using the exact template above, separating each note with a thematic divider (---). 
+3. Generate the Markdown notes using the exact template above, ensuring every note is tagged with 'atomicnote', separating each note with a thematic divider (---). 
 4. Ensure every note can be read and understood completely independently of the original article.
 5. Do NOT output any "Index", "Overview", "MOC", or "Map of Content" note under any circumstances. Output ONLY the standalone, individual atomic concept notes.`;
 

@@ -51,3 +51,16 @@ This log tracks project configuration changes, architecture decisions, and syste
   2. If no directory handle is active, `showDirectoryPicker` is automatically invoked to let the user select their vault folder.
   3. The directory handle is persisted in IndexedDB so subsequent saves require zero re-prompting.
   4. Remote Cloud Run containers now block `/api/save-files` from silently writing to container storage.
+
+### 4. Mandatory #atomicnote Tagging Across All Generated Notes
+- **What**: Enforced `#atomicnote` tagging on all generated and synthesized notes across backend prompts, browser BYOK synthesis, parser fail-safes, placeholder notes, and UI badge renders.
+- **Details**:
+  1. Updated `server.ts` system instructions to mandate the `atomicnote` tag in Core Rules, the note YAML template (`tags: [atomicnote, ...]`), and Execution Steps.
+  2. Updated `executeByokClientSynthesis` in `src/App.tsx` to require the `atomicnote` tag for browser-based custom provider syntheses.
+  3. Added deterministic parsing and injection logic in `src/types.ts`: whenever notes are parsed from LLM markdown, the parser guarantees `atomicnote` is present in `frontmatter.tags` and in the raw YAML frontmatter block if missing, without duplication.
+  4. Fixed multi-note split regex in `src/types.ts` so frontmatter blocks are never prematurely detached from note headers.
+  5. Updated placeholder note generation in `src/App.tsx` to include `atomicnote`.
+  6. Sanitized tag chip rendering in `src/App.tsx` (`#{tag.trim().replace(/^#/, '')}`) to prevent double hashes (`##atomicnote`).
+  7. Updated `.agents/skills/obsidian-atomic-notes-validator/SKILL.md` to require `atomicnote`.
+  8. Added unit test suite in `test/atomic-notes.test.ts` with `npm test` script.
+- **Files Modified**: `server.ts`, `src/App.tsx`, `src/types.ts`, `package.json`, `test/atomic-notes.test.ts`, `.agents/skills/obsidian-atomic-notes-validator/SKILL.md`, `AGENT_LOG.md`.

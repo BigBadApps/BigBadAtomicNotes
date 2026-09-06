@@ -111,7 +111,7 @@ async function executeByokClientSynthesis(
   const cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   const endpoint = cleanBase.endsWith("/chat/completions") ? cleanBase : `${cleanBase}/chat/completions`;
 
-  const systemInstruction = `You are an expert knowledge manager. Analyze the provided text and distill its core ideas into single-concept atomic notes in Markdown format separated by thematic dividers (---). Ensure each note begins with YAML frontmatter.`;
+  const systemInstruction = `You are an expert knowledge manager. Analyze the provided text and distill its core ideas into single-concept atomic notes in Markdown format separated by thematic dividers (---). Ensure each note begins with YAML frontmatter, and all notes are tagged with atomicnote in the frontmatter tags list (e.g. tags: [atomicnote, ...]).`;
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -810,8 +810,8 @@ export default function App() {
               const targetNote: ParsedNote = {
                 title: linkLabel,
                 fileName: `${linkLabel}.md`,
-                content: `---\ntags: [placeholder]\nsource: Referencing BigBadAtomicNotes\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkLabel}\n\nPlaceholder generated for [[${currentTitle || "Synthesis"}]]`,
-                frontmatter: { aliases: "", tags: "placeholder", source: currentTitle, date: new Date().toISOString().split("T")[0] }
+                content: `---\ntags: [placeholder, atomicnote]\nsource: Referencing BigBadAtomicNotes\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkLabel}\n\nPlaceholder generated for [[${currentTitle || "Synthesis"}]]`,
+                frontmatter: { aliases: "", tags: "placeholder, atomicnote", source: currentTitle, date: new Date().toISOString().split("T")[0] }
               };
               window.open(getObsidianUri(targetNote));
             }}
@@ -1450,7 +1450,7 @@ export default function App() {
                             <div className="flex flex-wrap gap-1 pt-1">
                               {note.frontmatter.tags.split(',').map((tag, tIdx) => (
                                 <span key={tIdx} className="text-[9px] font-mono text-indigo-400 bg-indigo-500/5 px-1.5 py-0.5 rounded border border-indigo-500/15">
-                                  #{tag.trim()}
+                                  #{tag.trim().replace(/^#/, '')}
                                 </span>
                               ))}
                             </div>
