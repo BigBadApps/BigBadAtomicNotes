@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { sanitizeObsidianNote } from "./src/types";
 
 dotenv.config();
 
@@ -87,7 +88,8 @@ async function startServer() {
         usedFileNames.add(fileName.toLowerCase());
 
         const filePath = path.join(resolvedPath, fileName);
-        await fs.writeFile(filePath, note.content || "", "utf-8");
+        const fileContent = sanitizeObsidianNote(note.content || "");
+        await fs.writeFile(filePath, fileContent, "utf-8");
         savedFiles.push(fileName);
       }
 
@@ -242,16 +244,20 @@ Core Rules:
 1. Atomicity: Each note must focus on *one* single, specific concept or idea. If a topic requires multiple distinct ideas to explain, split it into multiple notes.
 2. Synthesis over Copying: Explain the concept in your own words. Be concise, insightful, and high-density. Use bullet points for readability where appropriate.
 3. Wikilinking: Aggressively identify key terms, broad themes, or related concepts and wrap them in Obsidian wikilinks (e.g., [[Cognitive Load]]). Do this naturally within the body text and in a dedicated "Related" section.
-4. Formatting: Use strict Markdown. Each note must begin with YAML frontmatter.
+4. YAML Frontmatter & Formatting Rules (Strict Obsidian Linter Compliance):
+   - Only ONE frontmatter block per file enclosed between '---' lines at the very top. Never write a second '---' line or frontmatter block later in the note body unless inside a fenced code block with triple backticks (\`\`\`). For thematic horizontal dividers in the note body, use '***'.
+   - Double-quote any frontmatter value that contains a colon (':') (e.g. source: "Independent Intelligence: Auditing Algorithms", title: "Note: Subtitle", aliases: ["Alt: Name"]).
+   - Double-quote values starting with control characters [ ] { } , & * # ? | - < > = ! % @ \` or containing ': ' anywhere inside. When in doubt, wrap the whole value in double quotes.
+   - Escape existing double quotes inside a quoted value as \\\".
 5. Tagging: Every note MUST include the 'atomicnote' tag in its YAML frontmatter 'tags' list (e.g., tags: [atomicnote, tag1, tag2]).
 
 Note Template:
 For every atomic concept you identify, output a separate note using the exact structure below:
 
 ---
-aliases: [{Alternative name 1}, {Alternative name 2}]
+aliases: ["{Alternative name 1}", "{Alternative name 2}"]
 tags: [atomicnote, {tag1}, {tag2}]
-source: {URL or Title of the provided text}
+source: "{URL or Title of the provided text}"
 date: {Current Date}
 ---
 # {Concise, Declarative Note Title}

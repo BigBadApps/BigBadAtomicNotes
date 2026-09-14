@@ -24,7 +24,7 @@ import {
   RefreshCw,
   LogIn
 } from "lucide-react";
-import { parseMarkdownNotes, filterOutIndexNotes, ParsedNote } from "./types";
+import { parseMarkdownNotes, filterOutIndexNotes, sanitizeObsidianNote, ParsedNote } from "./types";
 import { GoogleAuth, GoogleUser, promptGoogleSignIn, GOOGLE_CLIENT_ID } from "./GoogleAuth";
 import { getStoredDirectoryHandle, storeDirectoryHandle } from "./idb";
 
@@ -111,7 +111,7 @@ async function executeByokClientSynthesis(
   const cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   const endpoint = cleanBase.endsWith("/chat/completions") ? cleanBase : `${cleanBase}/chat/completions`;
 
-  const systemInstruction = `You are an expert knowledge manager. Analyze the provided text and distill its core ideas into single-concept atomic notes in Markdown format separated by thematic dividers (---). Ensure each note begins with YAML frontmatter, and all notes are tagged with atomicnote in the frontmatter tags list (e.g. tags: [atomicnote, ...]).`;
+  const systemInstruction = `You are an expert knowledge manager. Analyze the provided text and distill its core ideas into single-concept atomic notes in Markdown format separated by thematic dividers (---). Ensure each note begins with valid YAML frontmatter, and all notes are tagged with atomicnote in the frontmatter tags list (e.g. tags: [atomicnote, ...]). Follow these strict frontmatter rules: (1) Only one frontmatter block per file at the top; never write unindented --- later in note bodies unless inside triple backtick fences; use *** for body dividers. (2) Quote any frontmatter value containing a colon (:). (3) Quote values starting with [ ] { } , & * # ? | - < > = ! % @ \` or containing ': '. (4) Escape existing double quotes inside quoted values as \\\".`;
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -389,13 +389,17 @@ export default function App() {
 
     // Helper to record history after successful save
     const recordHistory = (notesToSave: ParsedNote[]) => {
+      const sanitizedList = notesToSave.map(n => ({
+        ...n,
+        content: sanitizeObsidianNote(n.content)
+      }));
       const timestampStr = `${new Date().toLocaleDateString()} • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       const newHistoryItem: HistoryItem = {
         id: Date.now().toString(),
-        title: notesToSave[0]?.title || "Saved Notes",
+        title: sanitizedList[0]?.title || "Saved Notes",
         timestamp: timestampStr,
-        rawMarkdown: notesToSave.map(n => n.content).join("\n\n---\n\n"),
-        notes: [...notesToSave],
+        rawMarkdown: sanitizedList.map(n => n.content).join("\n\n---\n\n"),
+        notes: sanitizedList,
         sourceInput: rawText || sourceUrl,
         isUrl: ingestionMode === "url"
       };
@@ -409,7 +413,7 @@ export default function App() {
       setTimeout(() => setSaveStatus(null), 4000);
     };
 
-    // 3. If we have a directory handle (in Brave/Chrome), check/request readwrite permission
+    // 2. Try saving directly via File System Access API
     if (dirHandle) {
       try {
         let hasPermission = false;
@@ -441,7 +445,7 @@ export default function App() {
 
           const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
           const writable = await fileHandle.createWritable();
-          await writable.write(note.content);
+          await writable.write(sanitizeObsidianNote(note.content));
           await writable.close();
           savedCount++;
         }
@@ -454,8 +458,46 @@ export default function App() {
         recordHistory(validNotes);
         return;
       } catch (err: any) {
-        console.error("File System Access API save error:", err);
-        if (err.name === "AbortError") return;
+        console.warn("Direct folder save error, checking local server fallback:", err);
+      }
+    }
+
+    // 3. Fallback: Prompt user to choose folder if they haven't yet
+    if (!dirHandle && (window as any).showDirectoryPicker) {
+      try {
+        const pickerHandle = await (window as any).showDirectoryPicker({
+          mode: "readwrite",
+          startIn: "documents"
+        });
+        if (pickerHandle) {
+          setLocalDirectoryHandle(pickerHandle);
+          await storeDirectoryHandle(pickerHandle);
+
+          let savedCount = 0;
+          for (const note of validNotes) {
+            let baseName = note.fileName ? note.fileName.replace(/\.md$/i, "") : note.title;
+            baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
+            const fileName = `${baseName}.md`;
+
+            const fileHandle = await pickerHandle.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(sanitizeObsidianNote(note.content));
+            await writable.close();
+            savedCount++;
+          }
+
+          setSaveStatus({
+            success: true,
+            message: `Saved ${savedCount} file(s) directly to "${pickerHandle.name}".`
+          });
+
+          recordHistory(validNotes);
+          return;
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.warn("Directory picker error, falling back:", err);
+        }
       }
     }
 
@@ -469,7 +511,7 @@ export default function App() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               targetPath: targetFolder,
-              notes: validNotes
+              notes: validNotes.map(n => ({ ...n, content: sanitizeObsidianNote(n.content) }))
             })
           });
           const data = await response.json();
@@ -491,7 +533,7 @@ export default function App() {
       baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
       const fileName = `${baseName}.md`;
 
-      const blob = new Blob([note.content], { type: "text/markdown;charset=utf-8" });
+      const blob = new Blob([sanitizeObsidianNote(note.content)], { type: "text/markdown;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -755,7 +797,8 @@ export default function App() {
   };
 
   const copyToClipboard = (text: string, index: number | "all") => {
-    navigator.clipboard.writeText(text);
+    const textToCopy = index === "all" ? text : sanitizeObsidianNote(text);
+    navigator.clipboard.writeText(textToCopy);
     if (index === "all") {
       setCopiedAll(true);
       setTimeout(() => setCopiedAll(false), 2000);
@@ -771,7 +814,7 @@ export default function App() {
     if (notesToDownload.length === 0) return;
 
     notesToDownload.forEach(note => {
-      const blob = new Blob([note.content], { type: "text/markdown;charset=utf-8;" });
+      const blob = new Blob([sanitizeObsidianNote(note.content)], { type: "text/markdown;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -790,7 +833,7 @@ export default function App() {
 
   const getObsidianUri = (note: ParsedNote) => {
     const encodedName = encodeURIComponent(note.title);
-    const encodedContent = encodeURIComponent(note.content);
+    const encodedContent = encodeURIComponent(sanitizeObsidianNote(note.content));
     const encodedVault = encodeURIComponent(vaultName.trim());
     return `obsidian://new?vault=${encodedVault}&name=${encodedName}&content=${encodedContent}`;
   };
@@ -810,7 +853,7 @@ export default function App() {
               const targetNote: ParsedNote = {
                 title: linkLabel,
                 fileName: `${linkLabel}.md`,
-                content: `---\ntags: [placeholder, atomicnote]\nsource: Referencing BigBadAtomicNotes\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkLabel}\n\nPlaceholder generated for [[${currentTitle || "Synthesis"}]]`,
+                content: sanitizeObsidianNote(`---\ntags: [placeholder, atomicnote]\nsource: "Referencing BigBadAtomicNotes"\ndate: ${new Date().toISOString().split('T')[0]}\n---\n# ${linkLabel}\n\nPlaceholder generated for [[${currentTitle || "Synthesis"}]]`),
                 frontmatter: { aliases: "", tags: "placeholder, atomicnote", source: currentTitle, date: new Date().toISOString().split("T")[0] }
               };
               window.open(getObsidianUri(targetNote));

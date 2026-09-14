@@ -64,3 +64,14 @@ This log tracks project configuration changes, architecture decisions, and syste
   7. Updated `.agents/skills/obsidian-atomic-notes-validator/SKILL.md` to require `atomicnote`.
   8. Added unit test suite in `test/atomic-notes.test.ts` with `npm test` script.
 - **Files Modified**: `server.ts`, `src/App.tsx`, `src/types.ts`, `package.json`, `test/atomic-notes.test.ts`, `.agents/skills/obsidian-atomic-notes-validator/SKILL.md`, `AGENT_LOG.md`.
+
+## 2026-09-14
+### 1. Strict YAML Frontmatter & Single Block Compliance for Obsidian
+- **What**: Enforced strict YAML frontmatter validity and Obsidian linter compliance across LLM prompts, note parsing, and save routines.
+- **Rules Enforced**:
+  1. Only one frontmatter block per file: converts unindented `---` in note bodies outside code blocks to `***`, preserving triple-backtick fenced blocks.
+  2. Quotes any frontmatter value containing a colon (`:`) (e.g. `source: "Independent Intelligence: Auditing Algorithms"`).
+  3. Quotes values starting with special characters (`[ ] { } , & * # ? | - < > = ! % @ \``) or containing `: `.
+  4. Escapes internal double quotes as `\"`.
+- **Files Modified**: `src/types.ts`, `server.ts`, `src/App.tsx`, `.agents/skills/obsidian-atomic-notes-validator/SKILL.md`, `test/atomic-notes.test.ts`, `AGENT_LOG.md`.
+

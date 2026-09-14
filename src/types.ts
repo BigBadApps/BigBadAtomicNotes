@@ -81,6 +81,189 @@ export function filterOutIndexNotes(notes: ParsedNote[]): ParsedNote[] {
   return notes.filter(n => !isMocOrIndexNote(n.title, n.fileName));
 }
 
+export function sanitizeYamlValue(val: string): string {
+  if (val === undefined || val === null) return "";
+  const trimmed = val.trim();
+  if (!trimmed) return "";
+
+  // If already wrapped in double quotes: "..."
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    const inner = trimmed.slice(1, -1).replace(/\\"/g, '"');
+    const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  }
+
+  // If already wrapped in single quotes: '...'
+  if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
+    const inner = trimmed.slice(1, -1);
+    const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  }
+
+  // Rule 2: Quote any frontmatter value that contains a colon (:).
+  // Rule 3: Quote values with [ ] { } , & * # ? | - < > = ! % @ ` at the start,
+  //         or ": " anywhere inside it.
+  const containsColon = trimmed.includes(':');
+  const startsWithSpecial = /^[\[\]{},&*#?|\-<>!=%@`]/.test(trimmed);
+  const containsColonSpace = trimmed.includes(': ');
+  const containsQuotes = trimmed.includes('"');
+
+  if (containsColon || startsWithSpecial || containsColonSpace || containsQuotes) {
+    const escaped = trimmed.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  }
+
+  return trimmed;
+}
+
+export function sanitizeFlowSequence(sequenceStr: string): string {
+  const inner = sequenceStr.trim().replace(/^\[\s*/, '').replace(/\s*\]$/, '');
+  if (!inner) return "[]";
+
+  const items: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  let quoteChar = "";
+
+  for (let i = 0; i < inner.length; i++) {
+    const char = inner[i];
+    if ((char === '"' || char === "'") && (i === 0 || inner[i - 1] !== '\\')) {
+      if (!inQuotes) {
+        inQuotes = true;
+        quoteChar = char;
+      } else if (char === quoteChar) {
+        inQuotes = false;
+      }
+      current += char;
+    } else if (char === ',' && !inQuotes) {
+      items.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) {
+    items.push(current.trim());
+  }
+
+  const sanitizedItems = items.map(item => sanitizeYamlValue(item));
+  return `[${sanitizedItems.join(', ')}]`;
+}
+
+export function sanitizeYamlFrontmatter(fmContent: string): string {
+  const lines = fmContent.split(/\r?\n/);
+  const resultLines: string[] = [];
+  let hasTags = false;
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
+      continue;
+    }
+
+    // Key-value pair: e.g. "source: Foo" or "aliases: [A, B]"
+    const kvMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
+    if (kvMatch) {
+      const key = kvMatch[1].trim();
+      const rawVal = kvMatch[2].trim();
+
+      if (key.toLowerCase() === 'tags') {
+        hasTags = true;
+        // Parse tag elements
+        let tagItems: string[] = [];
+        if (rawVal.startsWith('[') && rawVal.endsWith(']')) {
+          const innerTags = rawVal.slice(1, -1);
+          tagItems = innerTags.split(',').map(t => t.replace(/['"\[\]#]/g, '').trim()).filter(Boolean);
+        } else if (rawVal) {
+          tagItems = rawVal.split(',').map(t => t.replace(/['"\[\]#]/g, '').trim()).filter(Boolean);
+        }
+
+        if (!tagItems.some(t => t.toLowerCase() === 'atomicnote')) {
+          tagItems.unshift('atomicnote');
+        }
+
+        const sanitizedTags = tagItems.map(t => sanitizeYamlValue(t));
+        resultLines.push(`tags: [${sanitizedTags.join(', ')}]`);
+        continue;
+      }
+
+      if (rawVal.startsWith('[') && rawVal.endsWith(']')) {
+        resultLines.push(`${key}: ${sanitizeFlowSequence(rawVal)}`);
+      } else if (rawVal) {
+        resultLines.push(`${key}: ${sanitizeYamlValue(rawVal)}`);
+      } else {
+        resultLines.push(`${key}:`);
+      }
+      continue;
+    }
+
+    // List item under a key: e.g. "  - Item"
+    const listMatch = line.match(/^(\s*-\s+)(.*)$/);
+    if (listMatch) {
+      const prefix = listMatch[1];
+      const rawVal = listMatch[2].trim();
+      resultLines.push(`${prefix}${sanitizeYamlValue(rawVal)}`);
+      continue;
+    }
+
+    resultLines.push(line);
+  }
+
+  if (!hasTags) {
+    resultLines.push('tags: [atomicnote]');
+  }
+
+  return resultLines.join('\n');
+}
+
+export function sanitizeObsidianNote(content: string): string {
+  let trimmed = content.trim();
+  if (!trimmed) return "";
+
+  let frontmatterStr = "";
+  let bodyStr = trimmed;
+
+  // Rule 1: Only one frontmatter block per file.
+  if (trimmed.startsWith("---")) {
+    const lines = trimmed.split(/\r?\n/);
+    let closingLineIdx = -1;
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === "---") {
+        closingLineIdx = i;
+        break;
+      }
+    }
+
+    if (closingLineIdx !== -1) {
+      frontmatterStr = lines.slice(1, closingLineIdx).join("\n");
+      bodyStr = lines.slice(closingLineIdx + 1).join("\n");
+    }
+  }
+
+  const sanitizedFm = sanitizeYamlFrontmatter(frontmatterStr);
+
+  // Sanitize body lines: convert unindented "---" outside code fences to "***"
+  const bodyLines = bodyStr.split(/\r?\n/);
+  let inCodeFence = false;
+  const sanitizedBodyLines = bodyLines.map(line => {
+    const lineTrim = line.trim();
+    if (lineTrim.startsWith("```") || lineTrim.startsWith("~~~")) {
+      inCodeFence = !inCodeFence;
+      return line;
+    }
+    if (!inCodeFence) {
+      // Obsidian's linter treats any unindented --- on its own line as a frontmatter delimiter
+      if (/^---[ \t]*$/.test(line)) {
+        return "***";
+      }
+    }
+    return line;
+  });
+
+  const cleanBody = sanitizedBodyLines.join("\n").trim();
+  return cleanBody ? `---\n${sanitizedFm}\n---\n\n${cleanBody}` : `---\n${sanitizedFm}\n---`;
+}
+
 function addNoteFromContent(notes: ParsedNote[], noteContent: string) {
   let cleanContent = noteContent
     .replace(/^```(?:markdown)?\s*\n?/gi, '')
@@ -151,6 +334,9 @@ function addNoteFromContent(notes: ParsedNote[], noteContent: string) {
     fileName = `${baseFileName} (${counter}).md`;
   }
 
+  // Sanitize full note content according to strict Obsidian YAML frontmatter & single block rules
+  cleanContent = sanitizeObsidianNote(cleanContent);
+
   let aliases = "";
   let tags = "";
   let source = "";
@@ -166,32 +352,14 @@ function addNoteFromContent(notes: ParsedNote[], noteContent: string) {
 
     if (aliasesMatch) aliases = aliasesMatch[1].replace(/['"\[\]]/g, '').trim();
     if (sourceMatch) source = sourceMatch[1].replace(/['"]/g, '').trim();
-    if (dateMatch) date = dateMatch[1].trim();
-
-    let tagsList: string[] = [];
+    if (dateMatch) date = dateMatch[1].replace(/['"]/g, '').trim();
     if (tagsMatch) {
-      tagsList = tagsMatch[1]
+      tags = tagsMatch[1]
         .split(',')
         .map(t => t.replace(/['"\[\]#]/g, '').trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .join(', ');
     }
-    if (!tagsList.some(t => t.toLowerCase() === 'atomicnote')) {
-      tagsList.unshift('atomicnote');
-    }
-    tags = tagsList.join(', ');
-
-    // Ensure atomicnote tag is in the YAML frontmatter of the note content
-    const formattedTags = `tags: [${tagsList.join(', ')}]`;
-    let newFmContent = fmContent;
-    if (tagsMatch) {
-      newFmContent = fmContent.replace(/tags:\s*\[?[^\]\r\n]+\]?/i, formattedTags);
-    } else {
-      newFmContent = `${fmContent.trim()}\n${formattedTags}\n`;
-    }
-    cleanContent = cleanContent.replace(/^---[\s\S]*?---/, `---${newFmContent}---`);
-  } else {
-    tags = "atomicnote";
-    cleanContent = `---\ntags: [atomicnote]\n---\n${cleanContent}`;
   }
 
   notes.push({
