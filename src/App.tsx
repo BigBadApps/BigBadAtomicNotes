@@ -438,8 +438,7 @@ export default function App() {
           await storeDirectoryHandle(dirHandle);
         }
 
-        let savedCount = 0;
-        for (const note of validNotes) {
+        await Promise.all(validNotes.map(async (note) => {
           let baseName = note.fileName ? note.fileName.replace(/\.md$/i, "") : note.title;
           baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
           const fileName = `${baseName}.md`;
@@ -448,8 +447,8 @@ export default function App() {
           const writable = await fileHandle.createWritable();
           await writable.write(sanitizeObsidianNote(note.content));
           await writable.close();
-          savedCount++;
-        }
+        }));
+        const savedCount = validNotes.length;
 
         setSaveStatus({
           success: true,
@@ -474,8 +473,7 @@ export default function App() {
           setLocalDirectoryHandle(pickerHandle);
           await storeDirectoryHandle(pickerHandle);
 
-          let savedCount = 0;
-          for (const note of validNotes) {
+          await Promise.all(validNotes.map(async (note) => {
             let baseName = note.fileName ? note.fileName.replace(/\.md$/i, "") : note.title;
             baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
             const fileName = `${baseName}.md`;
@@ -484,8 +482,8 @@ export default function App() {
             const writable = await fileHandle.createWritable();
             await writable.write(sanitizeObsidianNote(note.content));
             await writable.close();
-            savedCount++;
-          }
+          }));
+          const savedCount = validNotes.length;
 
           setSaveStatus({
             success: true,
