@@ -129,6 +129,17 @@ async function startServer() {
         return res.status(400).json({ error: "Base URL, API Key, and Model are required." });
       }
 
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(baseUrl);
+      } catch (err) {
+        return res.status(400).json({ error: "Invalid Base URL format." });
+      }
+
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return res.status(400).json({ error: "Invalid Base URL protocol. Only HTTP and HTTPS are allowed." });
+      }
+
       const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
       const endpoint = `${cleanBaseUrl}/chat/completions`;
 
