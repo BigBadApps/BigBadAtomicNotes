@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import path from "path";
 import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
@@ -11,6 +12,9 @@ dotenv.config();
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+
+  // Set security headers
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   // Set payload limit to handle large texts/HTML
   app.use(express.json({ limit: '10mb' }));
