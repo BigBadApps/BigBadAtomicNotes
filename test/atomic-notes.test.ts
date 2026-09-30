@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMarkdownNotes, sanitizeObsidianNote, sanitizeYamlValue } from '../src/types';
+import { parseMarkdownNotes, sanitizeObsidianNote, sanitizeYamlValue, sanitizeFlowSequence, sanitizeYamlFrontmatter } from '../src/types';
 
 describe('Atomic Note Tagging Requirements', () => {
   test('automatically injects atomicnote into frontmatter tags if missing from LLM response', () => {
@@ -222,5 +222,89 @@ Body text.`;
     assert.strictEqual(notes.length, 1);
 
     assert.match(notes[0].content, /source:\s*"https:\/\/example\.com\/research\/note\?id=1"/);
+  });
+});
+
+describe('sanitizeFlowSequence', () => {
+  test('handles empty sequences', () => {
+    assert.strictEqual(sanitizeFlowSequence('[]'), '[]');
+    assert.strictEqual(sanitizeFlowSequence('[ ]'), '[]');
+    assert.strictEqual(sanitizeFlowSequence('  [   ]  '), '[]');
+    assert.strictEqual(sanitizeFlowSequence(''), '[]');
+  });
+
+  test('sanitizes simple values', () => {
+    assert.strictEqual(sanitizeFlowSequence('[a, b, c]'), '[a, b, c]');
+    assert.strictEqual(sanitizeFlowSequence('[ a , b , c ]'), '[a, b, c]');
+  });
+
+  test('respects values with commas inside quotes', () => {
+    assert.strictEqual(sanitizeFlowSequence('["a, b", \'c, d\']'), '["a, b", "c, d"]');
+    assert.strictEqual(sanitizeFlowSequence('["last, first", "name, other"]'), '["last, first", "name, other"]');
+  });
+
+  test('sanitizes values that require escaping', () => {
+    // #hash requires quotes
+    assert.strictEqual(sanitizeFlowSequence('[#hash, normal]'), '["#hash", normal]');
+    // key: value requires quotes
+    assert.strictEqual(sanitizeFlowSequence('[key: value, another]'), '["key: value", another]');
+  });
+});
+
+describe('sanitizeYamlFrontmatter', () => {
+  test('sanitizes basic key-value pairs', () => {
+    const input = 'source: Foo bar\nauthor: John Doe';
+    const output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('source: Foo bar'));
+    assert.ok(output.includes('author: John Doe'));
+  });
+
+  test('sanitizes flow sequences for non-tag keys', () => {
+    const input = 'aliases: [A, B]';
+    const output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('aliases: [A, B]'));
+  });
+
+  test('handles keys with empty values', () => {
+    const input = 'source:\nempty:   ';
+    const output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('source:'));
+    assert.ok(output.includes('empty:'));
+  });
+
+  test('handles list items under a key', () => {
+    const input = 'related:\n  - Item 1\n  - Item 2';
+    const output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('  - Item 1'));
+    assert.ok(output.includes('  - Item 2'));
+  });
+
+  test('processes tags and ensures atomicnote is present as first tag', () => {
+    // array format
+    let input = 'tags: [productivity, focus]';
+    let output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('tags: [atomicnote, productivity, focus]'));
+
+    // comma separated string format
+    input = 'tags: productivity, focus';
+    output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('tags: [atomicnote, productivity, focus]'));
+
+    // handles hash characters and quotes
+    input = 'tags: ["#productivity", \'#focus\']';
+    output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('tags: [atomicnote, productivity, focus]'));
+
+    // doesn\'t duplicate atomicnote
+    input = 'tags: [atomicnote, pkm]';
+    output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('tags: [atomicnote, pkm]'));
+  });
+
+  test('appends tags: [atomicnote] if no tags exist', () => {
+    const input = 'source: Internet\naliases: [Test]';
+    const output = sanitizeYamlFrontmatter(input);
+    assert.ok(output.includes('tags: [atomicnote]'));
+    assert.ok(output.endsWith('tags: [atomicnote]'));
   });
 });
