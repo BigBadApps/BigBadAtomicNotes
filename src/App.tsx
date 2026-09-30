@@ -91,8 +91,9 @@ async function fetchArticleTextClient(url: string): Promise<string> {
     scripts.forEach(s => s.remove());
     const text = doc.body ? doc.body.textContent || "" : html;
     return text.replace(/\s+/g, " ").trim().substring(0, 150000);
-  } catch (err: any) {
-    throw new Error(`Client-side URL fetch failed: ${err.message || err}. Please copy and paste the article text directly.`);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    throw new Error(`Client-side URL fetch failed: ${errorMessage}. Please copy and paste the article text directly.`);
   }
 }
 
@@ -280,8 +281,8 @@ export default function App() {
         localStorage.setItem("atomic_notes_local_folder_name", handle.name);
         await storeDirectoryHandle(handle);
         return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         console.warn("Directory picker error:", err);
       }
     }
@@ -379,8 +380,8 @@ export default function App() {
         setLocalFolderName(dirHandle.name);
         localStorage.setItem("atomic_notes_local_folder_name", dirHandle.name);
         await storeDirectoryHandle(dirHandle);
-      } catch (err: any) {
-        if (err.name === "AbortError") {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
           return; // User cancelled the folder picker
         }
         console.warn("showDirectoryPicker failed or was rejected:", err);
@@ -457,7 +458,7 @@ export default function App() {
 
         recordHistory(validNotes);
         return;
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn("Direct folder save error, checking local server fallback:", err);
       }
     }
@@ -494,8 +495,10 @@ export default function App() {
           recordHistory(validNotes);
           return;
         }
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.warn("Directory picker error, falling back:", err);
+        } else if (!(err instanceof Error)) {
           console.warn("Directory picker error, falling back:", err);
         }
       }
@@ -611,9 +614,10 @@ export default function App() {
         setByokTestStatus("error");
         setByokTestError(data.error || "Connection test failed.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setByokTestStatus("error");
-      setByokTestError(err.message || "Network error. Verify server and URL.");
+      const errorMessage = err instanceof Error ? err.message : "Network error. Verify server and URL.";
+      setByokTestError(errorMessage);
     }
   };
 
@@ -746,8 +750,9 @@ export default function App() {
       const updatedHistory = [newHistoryItem, ...history.slice(0, 19)];
       setHistory(updatedHistory);
       localStorage.setItem("atomic_notes_history", JSON.stringify(updatedHistory));
-    } catch (err: any) {
-      setError(err.message || "Synthesis failed. Please check your network connection.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Synthesis failed. Please check your network connection.";
+      setError(errorMessage);
       setMobileTab("input");
     } finally {
       setLoading(false);
