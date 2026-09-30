@@ -254,7 +254,7 @@ export default function App() {
   // Restore directory handle from IndexedDB if available
   useEffect(() => {
     async function restoreDirectory() {
-      if ((window as any).showDirectoryPicker) {
+      if (window.showDirectoryPicker) {
         try {
           const stored = await getStoredDirectoryHandle();
           if (stored) {
@@ -272,9 +272,9 @@ export default function App() {
   // Folder selection helper
   const handleSelectFolder = async () => {
     setFolderErrorMsg(null);
-    if ((window as any).showDirectoryPicker) {
+    if (window.showDirectoryPicker) {
       try {
-        const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
         setLocalDirectoryHandle(handle);
         setLocalFolderName(handle.name);
         localStorage.setItem("atomic_notes_local_folder_name", handle.name);
@@ -357,7 +357,7 @@ export default function App() {
     let dirHandle = localDirectoryHandle;
 
     // 1. If we don't have an active directory handle, try to restore from IndexedDB
-    if (!dirHandle && (window as any).showDirectoryPicker) {
+    if (!dirHandle && window.showDirectoryPicker) {
       try {
         const stored = await getStoredDirectoryHandle();
         if (stored) {
@@ -372,9 +372,9 @@ export default function App() {
 
     // 2. On remote hosts (Cloud Run / GitHub Pages), direct browser File System Access is required
     // If we still don't have a directory handle, prompt the user to choose their vault folder
-    if (!dirHandle && !isLocalHost && (window as any).showDirectoryPicker) {
+    if (!dirHandle && !isLocalHost && window.showDirectoryPicker) {
       try {
-        dirHandle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+        dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         setLocalDirectoryHandle(dirHandle);
         setLocalFolderName(dirHandle.name);
         localStorage.setItem("atomic_notes_local_folder_name", dirHandle.name);
@@ -430,7 +430,7 @@ export default function App() {
         }
 
         if (!hasPermission) {
-          dirHandle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+          dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
           setLocalDirectoryHandle(dirHandle);
           setLocalFolderName(dirHandle.name);
           localStorage.setItem("atomic_notes_local_folder_name", dirHandle.name);
@@ -463,9 +463,9 @@ export default function App() {
     }
 
     // 3. Fallback: Prompt user to choose folder if they haven't yet
-    if (!dirHandle && (window as any).showDirectoryPicker) {
+    if (!dirHandle && window.showDirectoryPicker) {
       try {
-        const pickerHandle = await (window as any).showDirectoryPicker({
+        const pickerHandle = await window.showDirectoryPicker({
           mode: "readwrite",
           startIn: "documents"
         });
