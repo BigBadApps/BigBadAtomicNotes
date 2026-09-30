@@ -369,3 +369,13 @@ function addNoteFromContent(notes: ParsedNote[], noteContent: string) {
     frontmatter: { aliases, tags, source, date }
   });
 }
+
+declare global {
+  interface Window {
+    showDirectoryPicker(options?: {
+      mode?: "read" | "readwrite";
+      startIn?: "desktop" | "documents" | "downloads" | "music" | "pictures" | "videos";
+      id?: string;
+    }): Promise<FileSystemDirectoryHandle>;
+  }
+}
