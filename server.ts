@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import path from "path";
 import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
@@ -11,6 +12,9 @@ dotenv.config();
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+
+  // Set security headers
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   // Set payload limit to handle large texts/HTML
   app.use(express.json({ limit: '10mb' }));
@@ -127,6 +131,17 @@ async function startServer() {
       const { baseUrl, apiKey, model } = req.body;
       if (!baseUrl || !apiKey || !model) {
         return res.status(400).json({ error: "Base URL, API Key, and Model are required." });
+      }
+
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(baseUrl);
+      } catch (err) {
+        return res.status(400).json({ error: "Invalid Base URL format." });
+      }
+
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return res.status(400).json({ error: "Invalid Base URL protocol. Only HTTP and HTTPS are allowed." });
       }
 
       const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
