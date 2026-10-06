@@ -91,8 +91,9 @@ async function fetchArticleTextClient(url: string): Promise<string> {
     scripts.forEach(s => s.remove());
     const text = doc.body ? doc.body.textContent || "" : html;
     return text.replace(/\s+/g, " ").trim().substring(0, 150000);
-  } catch (err: any) {
-    throw new Error(`Client-side URL fetch failed: ${err.message || err}. Please copy and paste the article text directly.`);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    throw new Error(`Client-side URL fetch failed: ${errorMessage}. Please copy and paste the article text directly.`);
   }
 }
 
@@ -254,7 +255,7 @@ export default function App() {
   // Restore directory handle from IndexedDB if available
   useEffect(() => {
     async function restoreDirectory() {
-      if ((window as any).showDirectoryPicker) {
+      if (window.showDirectoryPicker) {
         try {
           const stored = await getStoredDirectoryHandle();
           if (stored) {
@@ -272,16 +273,16 @@ export default function App() {
   // Folder selection helper
   const handleSelectFolder = async () => {
     setFolderErrorMsg(null);
-    if ((window as any).showDirectoryPicker) {
+    if (window.showDirectoryPicker) {
       try {
-        const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
         setLocalDirectoryHandle(handle);
         setLocalFolderName(handle.name);
         localStorage.setItem("atomic_notes_local_folder_name", handle.name);
         await storeDirectoryHandle(handle);
         return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         console.warn("Directory picker error:", err);
       }
     }
@@ -357,7 +358,7 @@ export default function App() {
     let dirHandle = localDirectoryHandle;
 
     // 1. If we don't have an active directory handle, try to restore from IndexedDB
-    if (!dirHandle && (window as any).showDirectoryPicker) {
+    if (!dirHandle && window.showDirectoryPicker) {
       try {
         const stored = await getStoredDirectoryHandle();
         if (stored) {
@@ -372,15 +373,15 @@ export default function App() {
 
     // 2. On remote hosts (Cloud Run / GitHub Pages), direct browser File System Access is required
     // If we still don't have a directory handle, prompt the user to choose their vault folder
-    if (!dirHandle && !isLocalHost && (window as any).showDirectoryPicker) {
+    if (!dirHandle && !isLocalHost && window.showDirectoryPicker) {
       try {
-        dirHandle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+        dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         setLocalDirectoryHandle(dirHandle);
         setLocalFolderName(dirHandle.name);
         localStorage.setItem("atomic_notes_local_folder_name", dirHandle.name);
         await storeDirectoryHandle(dirHandle);
-      } catch (err: any) {
-        if (err.name === "AbortError") {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
           return; // User cancelled the folder picker
         }
         console.warn("showDirectoryPicker failed or was rejected:", err);
@@ -430,15 +431,14 @@ export default function App() {
         }
 
         if (!hasPermission) {
-          dirHandle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+          dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
           setLocalDirectoryHandle(dirHandle);
           setLocalFolderName(dirHandle.name);
           localStorage.setItem("atomic_notes_local_folder_name", dirHandle.name);
           await storeDirectoryHandle(dirHandle);
         }
 
-        let savedCount = 0;
-        for (const note of validNotes) {
+        await Promise.all(validNotes.map(async (note) => {
           let baseName = note.fileName ? note.fileName.replace(/\.md$/i, "") : note.title;
           baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
           const fileName = `${baseName}.md`;
@@ -447,8 +447,8 @@ export default function App() {
           const writable = await fileHandle.createWritable();
           await writable.write(sanitizeObsidianNote(note.content));
           await writable.close();
-          savedCount++;
-        }
+        }));
+        const savedCount = validNotes.length;
 
         setSaveStatus({
           success: true,
@@ -457,15 +457,15 @@ export default function App() {
 
         recordHistory(validNotes);
         return;
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn("Direct folder save error, checking local server fallback:", err);
       }
     }
 
     // 3. Fallback: Prompt user to choose folder if they haven't yet
-    if (!dirHandle && (window as any).showDirectoryPicker) {
+    if (!dirHandle && window.showDirectoryPicker) {
       try {
-        const pickerHandle = await (window as any).showDirectoryPicker({
+        const pickerHandle = await window.showDirectoryPicker({
           mode: "readwrite",
           startIn: "documents"
         });
@@ -473,8 +473,7 @@ export default function App() {
           setLocalDirectoryHandle(pickerHandle);
           await storeDirectoryHandle(pickerHandle);
 
-          let savedCount = 0;
-          for (const note of validNotes) {
+          await Promise.all(validNotes.map(async (note) => {
             let baseName = note.fileName ? note.fileName.replace(/\.md$/i, "") : note.title;
             baseName = baseName.trim().replace(/[\\/:*?"<>|]/g, "").substring(0, 60).trim() || "Note";
             const fileName = `${baseName}.md`;
@@ -483,8 +482,8 @@ export default function App() {
             const writable = await fileHandle.createWritable();
             await writable.write(sanitizeObsidianNote(note.content));
             await writable.close();
-            savedCount++;
-          }
+          }));
+          const savedCount = validNotes.length;
 
           setSaveStatus({
             success: true,
@@ -494,8 +493,10 @@ export default function App() {
           recordHistory(validNotes);
           return;
         }
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.warn("Directory picker error, falling back:", err);
+        } else if (!(err instanceof Error)) {
           console.warn("Directory picker error, falling back:", err);
         }
       }
@@ -611,9 +612,10 @@ export default function App() {
         setByokTestStatus("error");
         setByokTestError(data.error || "Connection test failed.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setByokTestStatus("error");
-      setByokTestError(err.message || "Network error. Verify server and URL.");
+      const errorMessage = err instanceof Error ? err.message : "Network error. Verify server and URL.";
+      setByokTestError(errorMessage);
     }
   };
 
@@ -746,8 +748,9 @@ export default function App() {
       const updatedHistory = [newHistoryItem, ...history.slice(0, 19)];
       setHistory(updatedHistory);
       localStorage.setItem("atomic_notes_history", JSON.stringify(updatedHistory));
-    } catch (err: any) {
-      setError(err.message || "Synthesis failed. Please check your network connection.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Synthesis failed. Please check your network connection.";
+      setError(errorMessage);
       setMobileTab("input");
     } finally {
       setLoading(false);
