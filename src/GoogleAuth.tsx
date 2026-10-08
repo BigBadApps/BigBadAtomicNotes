@@ -101,24 +101,7 @@ export function promptGoogleSignIn(
     initializeGoogleIdentity(clientId, callback);
     if ((window as any).google?.accounts?.id) {
       try {
-        (window as any).google.accounts.id.prompt((notification: any) => {
-          if (notification?.isNotDisplayed?.()) {
-            console.warn(
-              "Google Sign-In prompt not displayed:",
-              notification.getNotDisplayedReason?.()
-            );
-          } else if (notification?.isSkippedMoment?.()) {
-            console.log(
-              "Google Sign-In prompt skipped:",
-              notification.getSkippedReason?.()
-            );
-          } else if (notification?.isDismissedMoment?.()) {
-            console.log(
-              "Google Sign-In prompt dismissed:",
-              notification.getDismissedReason?.()
-            );
-          }
-        });
+        (window as any).google.accounts.id.prompt();
       } catch (err) {
         console.error("Error triggering Google Sign-In prompt:", err);
       }
