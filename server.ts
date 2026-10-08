@@ -3,7 +3,7 @@ import helmet from "helmet";
 import path from "path";
 import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import dotenv from "dotenv";
 import { sanitizeObsidianNote } from "./src/types";
 
@@ -164,8 +164,7 @@ async function startServer() {
             messages: [
               { role: "user", content: "ping" }
             ],
-            max_tokens: 5,
-            temperature: 0.1
+            max_tokens: 5
           }),
           signal: controller.signal
         });
@@ -213,7 +212,7 @@ async function startServer() {
   // API endpoint to fetch a URL and/or generate the atomic notes
   app.post("/api/generate", async (req, res) => {
     try {
-      const { input, isUrl, model, byokConfig } = req.body;
+      const { input, isUrl, model, byokConfig, thinkingLevel } = req.body;
       const selectedModel = model || "gemini-3.8-flash";
       if (!input) {
         return res.status(400).json({ error: "Input text or URL is required." });
@@ -327,8 +326,7 @@ ${contentToAnalyze}`;
             messages: [
               { role: "system", content: systemInstruction },
               { role: "user", content: prompt }
-            ],
-            temperature: 0.2
+            ]
           })
         });
 
@@ -360,13 +358,28 @@ ${contentToAnalyze}`;
 
       console.log(`Calling Gemini (${selectedModel}) with content length: ${contentToAnalyze.length}...`);
 
+      const config: {
+        systemInstruction: string;
+        thinkingConfig?: {
+          thinkingLevel?: ThinkingLevel;
+        };
+      } = {
+        systemInstruction: systemInstruction,
+      };
+
+      if (thinkingLevel) {
+        const levelKey = String(thinkingLevel).toUpperCase() as keyof typeof ThinkingLevel;
+        if (ThinkingLevel[levelKey]) {
+          config.thinkingConfig = {
+            thinkingLevel: ThinkingLevel[levelKey],
+          };
+        }
+      }
+
       const response = await ai.models.generateContent({
         model: selectedModel,
         contents: prompt,
-        config: {
-          systemInstruction: systemInstruction,
-          temperature: 0.2,
-        },
+        config: config,
       });
 
       const markdown = response.text;
