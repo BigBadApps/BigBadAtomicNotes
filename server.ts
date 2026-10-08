@@ -13,8 +13,11 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3003;
 
-  // Set security headers
-  app.use(helmet({ contentSecurityPolicy: false }));
+  // Set security headers (allow popups for Google OAuth)
+  app.use(helmet({ 
+    contentSecurityPolicy: false,
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
+  }));
 
   // Set payload limit to handle large texts/HTML
   app.use(express.json({ limit: '10mb' }));
